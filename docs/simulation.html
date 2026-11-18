@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Apex Steel Search</title>
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij4KICA8cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgcng9IjUyIiBmaWxsPSIjRjJBOTAwIi8+CiAgCiAgPGcgc3Ryb2tlPSIjMUY0RTc5IiBzdHJva2Utd2lkdGg9IjEzIiBzdHJva2UtbGluZWNhcD0icm91bmQiIGZpbGw9Im5vbmUiPgogICAgPGxpbmUgeDE9IjExMiIgeTE9IjU4IiB4Mj0iNTAiIHkyPSIyMDYiLz4KICAgIDxsaW5lIHgxPSIxMTIiIHkxPSI1OCIgeDI9IjE1MCIgeTI9IjE1MCIvPgogICAgPGxpbmUgeDE9IjcyIiB5MT0iMTUyIiB4Mj0iMTQwIiB5Mj0iMTUyIi8+CiAgPC9nPgogIDxjaXJjbGUgY3g9IjExMiIgY3k9IjUwIiByPSIxNyIgZmlsbD0iI2ZmZiIgc3Ryb2tlPSIjMUY0RTc5IiBzdHJva2Utd2lkdGg9IjgiLz4KICAKICA8bGluZSB4MT0iMTk2IiB5MT0iMTk2IiB4Mj0iMjIyIiB5Mj0iMjIyIiBzdHJva2U9IiMxRjRFNzkiIHN0cm9rZS13aWR0aD0iMjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogIDxjaXJjbGUgY3g9IjE2OCIgY3k9IjE2OCIgcj0iMzgiIGZpbGw9IiNmZmYiIHN0cm9rZT0iIzFGNEU3OSIgc3Ryb2tlLXdpZHRoPSIxMyIvPgogIDxjaXJjbGUgY3g9IjE2OCIgY3k9IjE2OCIgcj0iMTkiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI0YyQTkwMCIgc3Ryb2tlLXdpZHRoPSI3IiBzdHJva2UtZGFzaGFycmF5PSI0MCAyMDAiIHRyYW5zZm9ybT0icm90YXRlKDIwMCAxNjggMTY4KSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPg==">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--steel:#1F4E79;--steel2:#2C6AA0;--steelSoft:#E8F0F8;--amber:#F2A900;--amberSoft:#FFF4D6;--bg:#F4F6F9;--card:#fff;--line:#E1E6ED;--text:#1B2430;--muted:#5F6D7E;--green:#1E8E5A;--greenSoft:#E3F4EC;--red:#C0392B;--redSoft:#FBE7E4}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:Inter,system-ui,sans-serif;color:var(--text);background:var(--bg);font-size:14px;line-height:1.45}
+button,input,select{font-family:inherit;font-size:inherit}
+.app{display:grid;grid-template-columns:224px 1fr;grid-template-rows:60px 1fr;height:100vh}
+header{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 18px;background:var(--steel);color:#fff}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;white-space:nowrap}
+.brand small{display:block;font-weight:500;font-size:11px;opacity:.75}
+.gsearch{flex:1;max-width:640px;position:relative}
+.gsearch input{width:100%;padding:10px 14px 10px 38px;border-radius:10px;border:0;outline:none;background:#fff;color:var(--text)}
+.gsearch svg{position:absolute;left:12px;top:50%;transform:translateY(-50%)}
+.mode{display:flex;background:rgba(255,255,255,.14);border-radius:10px;padding:3px;gap:2px}
+.mode button{border:0;background:none;color:#fff;padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600;font-size:12.5px;display:flex;align-items:center;gap:6px}
+.mode button.on{background:#fff;color:var(--steel)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.hstat{font-size:12px;opacity:.85;white-space:nowrap}
+nav{background:#fff;border-right:1px solid var(--line);padding:14px 10px;overflow:auto}
+nav .grp{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 10px 6px}
+nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;color:var(--text);text-decoration:none;font-weight:500;cursor:pointer}
+nav a:hover{background:var(--bg)}
+nav a.on{background:var(--steelSoft);color:var(--steel);font-weight:600}
+nav a .tag{margin-left:auto;font-size:10.5px;background:var(--amberSoft);color:#8A6100;padding:1px 6px;border-radius:6px;font-weight:600}
+main{overflow:auto;padding:22px 26px 60px}
+h1{font-size:21px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:12.5px;color:var(--text)}
+.chip:hover{border-color:var(--steel2)}
+.chip.on{background:var(--steel);color:#fff;border-color:var(--steel)}
+.chip.ex{background:var(--amberSoft);border-color:#F3D98A}
+.bigsearch{display:flex;gap:8px;margin-bottom:12px}
+.bigsearch input{flex:1;padding:12px 14px;border:1px solid var(--line);border-radius:10px;outline:none;background:#fff}
+.bigsearch input:focus{border-color:var(--steel2);box-shadow:0 0 0 3px var(--steelSoft)}
+.btn{border:0;background:var(--steel);color:#fff;padding:10px 16px;border-radius:10px;font-weight:600;cursor:pointer}
+.btn:hover{background:var(--steel2)}
+.btn.ghost{background:#fff;color:var(--steel);border:1px solid var(--line)}
+.btn.amber{background:var(--amber);color:#2B2000}
+.btn.sm{padding:6px 11px;font-size:12.5px;border-radius:8px}
+select{padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.results{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+.res{display:flex;gap:14px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;transition:.12s}
+.res:hover{border-color:var(--steel2);box-shadow:0 2px 10px rgba(31,78,121,.08)}
+.res .thumb{width:86px;height:62px;flex:none;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#fafbfc}
+.res .thumb svg{width:100%;height:100%;display:block}
+.res .body{flex:1;min-width:0}
+.res .t{font-weight:600;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.res .p{color:var(--muted);font-size:12px;margin:2px 0 5px;font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.res .s{font-size:13px;color:#33414F}
+.score{margin-left:auto;text-align:right;font-size:11.5px;color:var(--muted);flex:none}
+.score b{display:block;font-size:17px;color:var(--steel)}
+mark{background:#FFE48A;color:inherit;padding:0 1px;border-radius:3px}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;letter-spacing:.02em}
+.b-pdf{background:#FDE6E3;color:#B23121}.b-docx{background:#E2ECFB;color:#1F57B8}.b-xlsx{background:#E1F4E8;color:#1A7A45}
+.b-dwg,.b-dxf{background:#EDE6FA;color:#5B35A8}.b-jpg{background:#FFF0D9;color:#9A5B00}.b-msg{background:#E6F4F6;color:#156B78}
+.b-latest{background:var(--greenSoft);color:var(--green)}.b-old{background:#EEF0F3;color:var(--muted)}
+.b-ocr{background:var(--amberSoft);color:#8A6100}.b-lang{background:#EEF0F3;color:#44505E}
+.why{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.why span{font-size:11px;background:var(--steelSoft);color:var(--steel);padding:2px 8px;border-radius:6px}
+.empty{color:var(--muted);text-align:center;padding:40px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:22px;color:var(--steel)}
+.stat span{color:var(--muted);font-size:12px}
+table{border-collapse:collapse;width:100%;background:#fff}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);cursor:pointer;user-select:none;background:#FAFBFC;position:sticky;top:0}
+tr.click{cursor:pointer}tr.click:hover td{background:#F7FAFD}
+.mono{font-family:'JetBrains Mono',monospace;font-size:12.5px}
+/* drawer */
+.drawer{position:fixed;top:0;right:0;height:100vh;width:min(520px,100vw);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 30px rgba(20,40,70,.12);transform:translateX(105%);transition:.22s;z-index:30;display:flex;flex-direction:column}
+.drawer.open{transform:none}
+.dh{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start}
+.dh h2{font-size:16px;margin:0 0 4px;word-break:break-word}
+.x{margin-left:auto;border:0;background:var(--bg);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;flex:none}
+.db{padding:16px 18px;overflow:auto;flex:1}
+.visual{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:14px;background:#fafbfc}
+.visual svg{display:block;width:100%;height:auto}
+.meta{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;font-size:13px;margin-bottom:14px}
+.meta div:nth-child(odd){color:var(--muted)}
+.txt{background:#FAFBFC;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:13px;white-space:pre-wrap}
+.df{padding:12px 18px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+/* chat */
+.chat{display:flex;flex-direction:column;height:calc(100vh - 160px);min-height:420px}
+.msgs{flex:1;overflow:auto;padding:6px 2px 10px;display:flex;flex-direction:column;gap:12px}
+.m{max-width:82%;padding:11px 14px;border-radius:14px;font-size:13.5px}
+.m.u{align-self:flex-end;background:var(--steel);color:#fff;border-bottom-right-radius:4px}
+.m.a{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+.m.a .who{font-size:11px;color:var(--muted);margin-bottom:5px;display:flex;gap:6px;align-items:center}
+.m.a ul{margin:6px 0;padding-left:18px}
+.m.a table{margin:8px 0;font-size:12px}
+.m.a th,.m.a td{padding:5px 7px;font-size:12px}
+.cite{display:inline-block;background:var(--steelSoft);color:var(--steel);font-weight:700;font-size:11px;border-radius:5px;padding:0 5px;margin:0 1px;cursor:pointer}
+.srcs{margin-top:8px;border-top:1px dashed var(--line);padding-top:7px;font-size:12px;color:var(--muted)}
+.srcs div{cursor:pointer}.srcs div:hover{color:var(--steel)}
+.composer{display:flex;gap:8px;padding-top:10px;border-top:1px solid var(--line)}
+.composer input{flex:1;padding:12px 14px;border:1px solid var(--line);border-radius:10px;outline:none}
+.typing span{display:inline-block;width:6px;height:6px;margin:0 2px;background:var(--muted);border-radius:50%;animation:b 1s infinite}
+.typing span:nth-child(2){animation-delay:.15s}.typing span:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}
+/* photos */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.ph{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;position:relative}
+.ph svg,.ph img{display:block;width:100%;height:130px;object-fit:cover}
+.ph .c{padding:8px 10px;font-size:12px}
+.ph .sim{position:absolute;top:8px;right:8px;background:var(--steel);color:#fff;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px}
+.ph.sel{outline:3px solid var(--amber)}
+.drop{border:2px dashed #C9D3DF;border-radius:12px;padding:18px;text-align:center;color:var(--muted);background:#fff;cursor:pointer}
+.drop.over{border-color:var(--steel2);background:var(--steelSoft)}
+/* diff */
+.diff div{padding:5px 9px;border-radius:6px;margin:3px 0;font-size:13px}
+.add{background:var(--greenSoft);color:#14603D}.del{background:var(--redSoft);color:#8E2A1F;text-decoration:line-through}.same{color:var(--muted)}
+.tl{display:flex;gap:0;align-items:center;margin:10px 0 4px;flex-wrap:wrap}
+.tl .r{padding:6px 12px;border:1px solid var(--line);background:#fff;font-weight:600;cursor:pointer;font-size:12.5px}
+.tl .r:first-child{border-radius:8px 0 0 8px}.tl .r:last-child{border-radius:0 8px 8px 0}
+.tl .r.lt{background:var(--greenSoft);color:var(--green);border-color:#BFE3CF}
+.tl .r.selA{box-shadow:inset 0 -3px 0 var(--red)}.tl .r.selB{box-shadow:inset 0 -3px 0 var(--green)}
+.bar{height:8px;background:#E7ECF2;border-radius:6px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--steel2),var(--amber));width:0;transition:width .2s}
+.log{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);height:120px;overflow:auto;background:#FAFBFC;border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:10px}
+.set{display:grid;grid-template-columns:220px 1fr;gap:12px 18px;align-items:center}
+.set label{color:var(--muted)}
+.switch{position:relative;width:42px;height:24px;background:#CBD3DD;border-radius:999px;cursor:pointer;border:0;flex:none}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.15s}
+.switch.on{background:var(--green)}.switch.on::after{left:21px}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:#1B2430;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.2s;z-index:50;font-size:13px;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.banner{background:var(--amberSoft);border:1px solid #F3D98A;color:#6B4C00;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:14px}
+@media (max-width:860px){
+ .app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
+ header{flex-wrap:wrap;padding:10px 12px;gap:10px}
+ .gsearch{order:3;flex-basis:100%;max-width:none}
+ .hstat{display:none}
+ nav{display:flex;overflow-x:auto;padding:6px;border-right:0;border-bottom:1px solid var(--line)}
+ nav .grp{display:none}nav a{white-space:nowrap}nav a .tag{display:none}
+ main{padding:16px}
+ .grid2,.grid3{grid-template-columns:1fr}
+ .set{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand">
+    <svg width="36" height="36" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="52" fill="#F2A900"/>
+  
+  <g stroke="#1F4E79" stroke-width="13" stroke-linecap="round" fill="none">
+    <line x1="112" y1="58" x2="50" y2="206"/>
+    <line x1="112" y1="58" x2="150" y2="150"/>
+    <line x1="72" y1="152" x2="140" y2="152"/>
+  </g>
+  <circle cx="112" cy="50" r="17" fill="#fff" stroke="#1F4E79" stroke-width="8"/>
+  
+  <line x1="196" y1="196" x2="222" y2="222" stroke="#1F4E79" stroke-width="20" stroke-linecap="round"/>
+  <circle cx="168" cy="168" r="38" fill="#fff" stroke="#1F4E79" stroke-width="13"/>
+  <circle cx="168" cy="168" r="19" fill="none" stroke="#F2A900" stroke-width="7" stroke-dasharray="40 200" transform="rotate(200 168 168)" stroke-linecap="round"/>
+</svg>
+    <div>Apex Steel Search<small>Windows desktop · simulation</small></div>
+  </div>
+  <div class="gsearch">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5F6D7E" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.5-4.5"/></svg>
+    <input id="gq" placeholder="Search drawings, PDF, Word, Excel, photos… (e.g. anchor bolt, M24 10.9, 螺栓)">
+  </div>
+  <div class="mode" id="modeSw">
+    <button data-m="off" class="on"><span class="dot" style="background:#3DDC84"></span>Offline</button>
+    <button data-m="on"><span class="dot" style="background:#7CC4FF"></span>Online</button>
+  </div>
+  <div class="hstat" id="hstat"></div>
+</header>
+<nav id="nav">
+  <div class="grp">Search</div>
+  <a data-v="search">🔎 Keyword search</a>
+  <a data-v="smart">🧠 Smart search <span class="tag">AI</span></a>
+  <a data-v="assistant">💬 AI assistant <span class="tag">AI</span></a>
+  <div class="grp">Organise</div>
+  <a data-v="library">🏷️ Library &amp; tags</a>
+  <a data-v="revisions">📐 Revisions</a>
+  <a data-v="photos">🖼️ Photos &amp; OCR</a>
+  <a data-v="duplicates">🧬 Duplicates</a>
+  <div class="grp">System</div>
+  <a data-v="folders">📁 Folders &amp; index</a>
+  <a data-v="settings">⚙️ Settings</a>
+</nav>
+<main id="main"></main>
+</div>
+
+<div class="drawer" id="drawer"><div class="dh" id="dh"></div><div class="db" id="db"></div><div class="df" id="df"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============ STATE ============ */
+const S={view:'search',online:false,q:'',sq:'',type:'all',project:'all',latest:false,sort:'rel',libSort:'name',libDir:1,revDno:null,revA:null,revB:null,photoSel:null,chat:[],sync:true,model:'Qwen2.5-7B-Instruct (Q4, local)',cloud:'Qwen-Max (Alibaba Cloud)',ocr:{fr:true,en:true,zh:true},dropImg:null,indexing:false};
+
+const PROJ={'P-2401':'P-2401 Hot Strip Mill Extension','P-2318':'P-2318 Coil Storage Building','P-2422':'P-2422 Converter Gas Cleaning'};
+
+/* ============ SAMPLE DOCUMENTS ============ */
+const D=[
+{id:1,name:'D-2401-S-101_RevC_Column_bases.pdf',ext:'pdf',kind:'drawing',project:'P-2401',path:'D:\\Projects\\P-2401\\Drawings\\Structural',date:'2026-10-28',size:'2.4 MB',dno:'D-2401-S-101',rev:'C',title:'Column base plates & anchor bolts – Grid A to F',lang:'EN',material:'S355J2',hash:'a91f',
+text:'GENERAL ARRANGEMENT – COLUMN BASES GRID A TO F. Anchor bolts M36 grade 8.8, hot-dip galvanized, embedment 900 mm. Base plate 40 mm thick, S355J2. Shear key HEA 160 on columns A3 and A4. Grout 50 mm non-shrink cementitious grout, minimum 60 MPa. Levelling nuts to be removed after grouting. Tolerances: anchor bolt position ±3 mm, base level ±5 mm. Rev C: base plate thickness changed from 35 mm to 40 mm. Rev C: shear key added on columns A3 and A4.'},
+{id:2,name:'D-2401-S-101_RevB_Column_bases.pdf',ext:'pdf',kind:'drawing',project:'P-2401',path:'D:\\Projects\\P-2401\\Drawings\\Structural\\Superseded',date:'2026-09-14',size:'2.2 MB',dno:'D-2401-S-101',rev:'B',title:'Column base plates & anchor bolts – Grid A to F',lang:'EN',material:'S355J2',hash:'77c2',
+text:'GENERAL ARRANGEMENT – COLUMN BASES GRID A TO F. Anchor bolts M36 grade 8.8, hot-dip galvanized, embedment 900 mm. Base plate 35 mm thick, S355J2. Grout 50 mm non-shrink cementitious grout, minimum 60 MPa. Levelling nuts to be removed after grouting. Tolerances: anchor bolt position ±3 mm, base level ±5 mm.'},
+{id:3,name:'D-2401-S-205_RevA_Crane_girder_axis3.dwg',ext:'dwg',kind:'drawing',project:'P-2401',path:'D:\\Projects\\P-2401\\Drawings\\CAD',date:'2026-10-02',size:'5.8 MB',dno:'D-2401-S-205',rev:'A',title:'Crane runway girder 50 t – axis 3',lang:'EN',material:'S355J2+N',hash:'3be0',
+text:'Crane runway girder for 50 t overhead crane, span 12 m. Girder welded I-section 900 mm, S355J2+N. Rail A100 fixed with rail clips at 600 mm. Connection bolts M24 HV grade 10.9, preloaded, tightening torque 1100 Nm. Full penetration butt weld on top flange, UT 100%. Camber 15 mm.'},
+{id:4,name:'D-2401-S-206_RevB_Crane_girder_connections.dxf',ext:'dxf',kind:'drawing',project:'P-2401',path:'D:\\Projects\\P-2401\\Drawings\\CAD',date:'2026-10-19',size:'1.1 MB',dno:'D-2401-S-206',rev:'B',title:'Crane girder connections – details',lang:'EN',material:'S355J2',hash:'5d11',
+text:'Detail 1: girder to bracket connection, 8 bolts M24 HV 10.9 with hardened washers both sides. Detail 2: surge girder connection, fillet weld a=6 mm all round. Detail 3: rail clip and elastomeric pad. Bolts to be preloaded by torque method, 1100 Nm, 10% checked by inspector.'},
+{id:5,name:'MS-2401-007_Method_statement_crane_girder_erection.docx',ext:'docx',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\HSE & Methods',date:'2026-10-21',size:'860 KB',title:'Method statement – erection of crane girders',lang:'EN',material:'',hash:'91aa',
+text:'1. Scope: erection of crane runway girders axis 1 to 6. 2. Equipment: 220 t crawler crane, 2 x 25 t chain blocks, man-lift 26 m. 3. Sequence: check column tops and brackets level, lift girder with spreader beam, fit bolts snug-tight, survey alignment, then preload bolts to 1100 Nm. 4. Permits: lifting permit and working at height permit required daily. 5. Safety: exclusion zone 1.5 x boom length, full body harness above 2 m, wind limit 9.8 m/s. 6. Inspection: torque check 10% of bolts, survey report before rail installation.'},
+{id:6,name:'ITP-2401-003_Inspection_test_plan_bolting.xlsx',ext:'xlsx',kind:'sheet',project:'P-2401',path:'D:\\Projects\\P-2401\\Quality',date:'2026-09-30',size:'120 KB',title:'Inspection & test plan – bolting',lang:'EN',material:'',hash:'0c4e',
+text:'Activity 1: bolt certificates review – Hold point. Activity 2: torque wrench calibration – Review. Activity 3: snug-tight check – Witness. Activity 4: preload torque check 10% sample at 1100 Nm for M24 10.9 – Hold point. Activity 5: anchor bolt survey before grouting – Hold point.'},
+{id:7,name:'BOM-2401_Bolts_and_anchors.xlsx',ext:'xlsx',kind:'sheet',project:'P-2401',path:'D:\\Projects\\P-2401\\Material',date:'2026-10-10',size:'84 KB',title:'Bill of materials – bolts & anchors',lang:'EN',material:'',hash:'e3f7',
+text:'M36 x 1200 anchor bolt grade 8.8 HDG – 96 pcs – columns A–F. M24 x 90 HV bolt grade 10.9 – 384 pcs – crane girders. M20 x 70 bolt grade 8.8 – 520 pcs – roof bracing. Hardened washers M24 – 768 pcs. Non-shrink grout 25 kg bags – 140 bags.'},
+{id:8,name:'IMG_20261105_0932.jpg',ext:'jpg',kind:'photo',project:'P-2401',path:'D:\\Apex Steel\\Photos\\2026-11-05',date:'2026-11-05',size:'4.1 MB',title:'Column base A3 before grouting',lang:'—',scene:'base',labels:['column base','anchor bolts','levelling nuts','concrete'],ocr:true,hash:'f001',
+text:'OCR: "A3" painted on column. "GL +0.050" marked on base plate. Detected: column base, anchor bolts, levelling nuts, shear key.'},
+{id:9,name:'IMG_20261105_0935.jpg',ext:'jpg',kind:'photo',project:'P-2401',path:'D:\\Apex Steel\\Photos\\2026-11-05',date:'2026-11-05',size:'3.9 MB',title:'Column base A4 before grouting',lang:'—',scene:'base2',labels:['column base','anchor bolts','concrete'],ocr:true,hash:'f002',
+text:'OCR: "A4" painted on column. Detected: column base, anchor bolts, grout formwork.'},
+{id:10,name:'IMG_20261110_1402.jpg',ext:'jpg',kind:'photo',project:'P-2401',path:'D:\\Apex Steel\\Photos\\2026-11-10',date:'2026-11-10',size:'5.2 MB',title:'Lifting crane girder axis 3',lang:'—',scene:'girder',labels:['crane girder','crawler crane','lifting','spreader beam'],ocr:true,hash:'f003',
+text:'OCR: "220t" on crane boom. Detected: crawler crane, crane girder, spreader beam, workers with harness.'},
+{id:11,name:'IMG_20261112_0815.jpg',ext:'jpg',kind:'photo',project:'P-2422',path:'D:\\Apex Steel\\Photos\\2026-11-12',date:'2026-11-12',size:'2.7 MB',title:'ID fan motor nameplate',lang:'—',scene:'plate',labels:['nameplate','motor','commissioning'],ocr:true,hash:'f004',
+text:'OCR: "3~ MOTOR  75 kW  380 V  50 Hz  IP55  1485 rpm  SN 2026-08812". Detected: motor nameplate.'},
+{id:12,name:'NCR-2401-012_scan.pdf',ext:'pdf',kind:'scan',project:'P-2401',path:'D:\\Projects\\P-2401\\Quality\\NCR',date:'2026-11-06',size:'1.3 MB',title:'Non-conformance – anchor bolt misalignment C2',lang:'EN',ocr:true,material:'',hash:'4a20',
+text:'Scanned document (OCR). Non-conformance report NCR-2401-012. Anchor bolt position deviation 12 mm at column C2, exceeds ±3 mm tolerance. Root cause: template moved during concrete pouring. Corrective action: cut bolt, drill and install resin anchor M36, approved by designer. Status: closed 2026-11-14.'},
+{id:13,name:'Daily_Report_2026-11-12.docx',ext:'docx',kind:'doc',project:'P-2401',path:'D:\\Apex Steel\\Reports',date:'2026-11-12',size:'1.9 MB',title:'Daily report 12 Nov 2026 (from Apex Steel app)',lang:'EN',material:'',hash:'2b9c',
+text:'Weather: sunny, wind 4 m/s. Work done: grouting columns A1 to A4 completed. Crane girders axis 3 erected and bolted snug-tight. Issues: 2 bolts M24 missing at girder G3-2, requested from store. Next day: preload torque crane girders axis 3. Author: Huu Phoc NGUY.'},
+{id:14,name:'SPEC-2401-21_Protective_coating.pdf',ext:'pdf',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\Specifications',date:'2026-07-01',size:'3.3 MB',title:'Technical specification – protective coating',lang:'EN',material:'',hash:'6f02',
+text:'Surface preparation Sa 2.5 by blasting. Primer zinc-rich epoxy 60 µm. Intermediate epoxy MIO 120 µm. Topcoat polyurethane 60 µm. Total dry film thickness (DFT) 240 µm minimum. Galvanized items: duplex system with sweep blasting. Touch-up after erection on bolts and damaged areas.'},
+{id:15,name:'D-2318-S-010_RevD_Roof_bracing.pdf',ext:'pdf',kind:'drawing',project:'P-2318',path:'E:\\Archive\\P-2318\\Drawings',date:'2025-06-18',size:'1.7 MB',dno:'D-2318-S-010',rev:'D',title:'Roof bracing plan',lang:'EN',material:'S275JR',hash:'8812',
+text:'Roof bracing angles L100x10, S275JR. Bolts M20 grade 8.8, 2 per connection. Purlins Z200 at 1.5 m centres. Rev D: bracing in bay 4 to 5 changed to L120x12.'},
+{id:16,name:'D-2318-S-010_RevC_Roof_bracing.pdf',ext:'pdf',kind:'drawing',project:'P-2318',path:'E:\\Archive\\P-2318\\Drawings\\Superseded',date:'2025-03-02',size:'1.6 MB',dno:'D-2318-S-010',rev:'C',title:'Roof bracing plan',lang:'EN',material:'S275JR',hash:'8811',
+text:'Roof bracing angles L100x10, S275JR. Bolts M20 grade 8.8, 2 per connection. Purlins Z200 at 1.5 m centres.'},
+{id:17,name:'COM-2422_ID_fan_precommissioning_checklist.docx',ext:'docx',kind:'doc',project:'P-2422',path:'D:\\Projects\\P-2422\\Commissioning',date:'2026-11-12',size:'240 KB',title:'ID fan motor – pre-commissioning checklist',lang:'EN',material:'',hash:'c0aa',
+text:'Motor 75 kW 380 V. Insulation resistance test 500 V: 850 MΩ – OK. Direction of rotation checked uncoupled – OK. Alignment laser check 0.04 mm – OK. Vibration at no load 2.8 mm/s – OK. Bearing temperature after 2 h 52 °C – OK. Ready for hot commissioning.'},
+{id:18,name:'吊车梁安装技术交底.pdf',ext:'pdf',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\Subcontractor',date:'2026-10-24',size:'1.2 MB',title:'吊车梁安装技术交底 (crane girder erection briefing)',lang:'中文',material:'S355J2',hash:'9dd0',
+text:'吊车梁安装：使用220吨履带吊。高强螺栓 M24 10.9级，终拧扭矩 1100 N·m，抽检10%。焊接：上翼缘全熔透焊缝，超声波探伤100%。安全：高处作业必须系安全带，风速超过9.8米/秒停止吊装。地脚螺栓灌浆强度达到30 MPa后方可安装吊车梁。'},
+{id:19,name:'Note_de_calcul_Pieds_de_poteaux.pdf',ext:'pdf',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\Calculations',date:'2026-08-20',size:'2.9 MB',title:'Note de calcul – pieds de poteaux',lang:'FR',material:'S355J2',hash:'b7e3',
+text:'Vérification des pieds de poteaux files A à F. Tiges d\'ancrage M36 classe 8.8, longueur de scellement 900 mm. Platine 40 mm acier S355J2. Bêche (clé de cisaillement) HEA 160 pour reprendre l\'effort horizontal du pont roulant. Calage au mortier sans retrait 50 mm. Taux de travail maximal 0,87.'},
+{id:20,name:'RE_Grout_curing_time_before_loading.msg',ext:'msg',kind:'email',project:'P-2401',path:'D:\\Mail\\P-2401',date:'2026-11-04',size:'64 KB',title:'RE: Grout curing time before loading',lang:'EN',material:'',hash:'1e55',
+text:'From: Design office. Grout under column bases must reach 30 MPa before loading with crane girders. Typically 3 days at 20 °C, 5 days below 10 °C. Please send cube test results before erection.'},
+{id:21,name:'Column base plates (copy).pdf',ext:'pdf',kind:'drawing',project:'P-2401',path:'C:\\Users\\Phoc\\Downloads',date:'2026-10-29',size:'2.4 MB',dno:'D-2401-S-101',rev:'C',title:'Column base plates & anchor bolts – Grid A to F',lang:'EN',material:'S355J2',hash:'a91f',dupOf:1,
+text:'GENERAL ARRANGEMENT – COLUMN BASES GRID A TO F. Anchor bolts M36 grade 8.8, hot-dip galvanized, embedment 900 mm. Base plate 40 mm thick, S355J2. (identical copy)'},
+{id:22,name:'CAL-TW-07_Torque_wrench_certificate.pdf',ext:'pdf',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\Quality\\Calibration',date:'2026-09-15',size:'420 KB',title:'Calibration certificate – torque wrench TW-07',lang:'EN',material:'',hash:'7a7a',
+text:'Torque wrench TW-07, range 300 to 1500 Nm. Calibration deviation +1.8% at 1100 Nm, within ±4%. Valid until 2027-03-15.'},
+{id:23,name:'LP-2401-04_Lifting_plan_220t_crawler.pdf',ext:'pdf',kind:'doc',project:'P-2401',path:'D:\\Projects\\P-2401\\HSE & Methods',date:'2026-10-20',size:'3.6 MB',title:'Lifting plan – 220 t crawler crane, crane girders',lang:'EN',material:'',hash:'5c5c',
+text:'Heaviest lift: crane girder 18.4 t plus spreader 1.6 t = 20 t. Radius 22 m, crane capacity 31 t, utilisation 65%. Ground bearing 180 kPa with mats. Wind limit 9.8 m/s. Lifting supervisor and banksman required.'},
+{id:24,name:'IMG_20261105_0932(1).jpg',ext:'jpg',kind:'photo',project:'P-2401',path:'C:\\Users\\Phoc\\Pictures\\WeChat',date:'2026-11-05',size:'4.1 MB',title:'Column base A3 before grouting (copy)',lang:'—',scene:'base',labels:['column base','anchor bolts','levelling nuts','concrete'],ocr:true,hash:'f001',dupOf:8,
+text:'OCR: "A3" painted on column. "GL +0.050" marked on base plate.'}
+];
+D.forEach(d=>{d.tags=[d.dno,d.rev&&('Rev '+d.rev),d.material,d.project,...(d.labels||[])].filter(Boolean).join(' ')});
+
+/* ============ SMART SEARCH CONCEPTS (multilingual) ============ */
+const C={
+ anchor:{l:'Anchor bolts / column base',t:['anchor','holding down','foundation bolt','base plate','column base','column foot','tige','ancrage','pied de poteau','pieds de poteaux','platine','地脚螺栓','柱脚','shear key','bêche','fixing']},
+ bolt:{l:'High-strength bolting',t:['bolt','10.9','8.8','hv','preload','torque','tightening','tight','snug','serrage','boulon','高强螺栓','螺栓','扭矩','终拧','washer']},
+ crane:{l:'Crane girder / runway',t:['crane girder','runway','girder','pont roulant','吊车梁','rail clip','surge']},
+ weld:{l:'Welding',t:['weld','welding','soudure','焊','fillet','butt','penetration','ut 100']},
+ grout:{l:'Grout / curing',t:['grout','calage','mortier','灌浆','curing','cube','non-shrink']},
+ coat:{l:'Coating / paint',t:['coating','paint','peinture','dft','primer','galvan','topcoat','防腐','sa 2.5','thickness of paint']},
+ safety:{l:'Safety / lifting',t:['harness','safety','sécurité','安全','permit','wind','exclusion','lifting','lift','吊装','crawler','banksman']},
+ qual:{l:'Quality / non-conformance',t:['ncr','non-conformance','deviation','tolerance','misalign','problem','defect','wrong','hold point','inspection','偏差']},
+ comm:{l:'Commissioning / motors',t:['motor','commissioning','insulation','vibration','rotation','nameplate','kw','fan','bearing']},
+ brace:{l:'Bracing / roof',t:['bracing','roof','purlin','toiture','contreventement']}
+};
+const conceptsOf=s=>{s=(s||'').toLowerCase();return Object.keys(C).filter(k=>C[k].t.some(t=>s.includes(t)))};
+D.forEach(d=>d.cs=conceptsOf(d.title+' '+d.text+' '+d.tags));
+
+/* ============ HELPERS ============ */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const toks=q=>q.toLowerCase().split(/[\s,;:/]+/).map(t=>t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,'')).filter(t=>t.length>1);
+const byId=id=>D.find(d=>d.id==id);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2300)}
+const isLatest=d=>!d.dno||!D.some(o=>o.dno===d.dno&&o.rev>d.rev);
+function badge(d){return `<span class="badge b-${d.ext}">${d.ext.toUpperCase()}</span>`}
+function hl(text,terms){let s=esc(text);terms=[...new Set(terms.filter(t=>t&&t.length>1))].sort((a,b)=>b.length-a.length);if(!terms.length)return s;const re=new RegExp('('+terms.map(t=>reEsc(esc(t))).join('|')+')','gi');return s.replace(re,'<mark>$1</mark>')}
+function snippet(text,terms,n=120){const low=text.toLowerCase();let p=-1;for(const t of terms){const i=low.indexOf(t.toLowerCase());if(i>=0&&(p<0||i<p))p=i}if(p<0)return text.slice(0,n*2)+(text.length>n*2?'…':'');const a=Math.max(0,p-n),b=Math.min(text.length,p+n);return (a?'…':'')+text.slice(a,b)+(b<text.length?'…':'')}
+
+/* ============ VISUALS (SVG) ============ */
+function drawingSVG(d,big){
+ const w=400,h=270;const id=d.dno||'';
+ let g='';
+ if(/101|Column/.test(d.title)){for(let i=0;i<6;i++){const x=55+i*52;g+=`<line x1="${x}" y1="30" x2="${x}" y2="190" stroke="#9AB" stroke-dasharray="6 3 1 3" stroke-width=".8"/><text x="${x}" y="24" font-size="9" text-anchor="middle" fill="#456">${'ABCDEF'[i]}</text><rect x="${x-12}" y="95" width="24" height="24" fill="none" stroke="#1F4E79" stroke-width="1.6"/><circle cx="${x-7}" cy="100" r="2" fill="#1F4E79"/><circle cx="${x+7}" cy="100" r="2" fill="#1F4E79"/><circle cx="${x-7}" cy="114" r="2" fill="#1F4E79"/><circle cx="${x+7}" cy="114" r="2" fill="#1F4E79"/>`}
+   if(d.rev==='C')g+=`<path d="M95 88 q6 -8 12 0 q6 -8 12 0 q6 -8 12 0 q8 4 0 12 q8 6 0 12 q-6 8 -12 0 q-6 8 -12 0 q-6 8 -12 0 q-8 -6 0 -12 q-8 -6 0 -12z" fill="none" stroke="#D33" stroke-width="1.2"/><text x="140" y="86" fill="#D33" font-size="9" font-weight="700">△C</text>`;
+   g+=`<text x="60" y="150" font-size="8.5" fill="#333">BASE PLATE ${d.rev==='C'?'40':'35'} mm · ANCHOR M36 8.8</text>`}
+ else if(/Crane|girder/i.test(d.title)){g+=`<rect x="40" y="80" width="300" height="14" fill="#DCE6F0" stroke="#1F4E79" stroke-width="1.5"/><rect x="40" y="150" width="300" height="14" fill="#DCE6F0" stroke="#1F4E79" stroke-width="1.5"/><line x1="40" y1="94" x2="40" y2="150" stroke="#1F4E79" stroke-width="2"/><line x1="340" y1="94" x2="340" y2="150" stroke="#1F4E79" stroke-width="2"/><rect x="185" y="66" width="10" height="14" fill="#1F4E79"/>`;for(let i=0;i<8;i++)g+=`<circle cx="${60+i*38}" cy="122" r="3" fill="none" stroke="#1F4E79"/>`;g+=`<text x="40" y="190" font-size="8.5" fill="#333">BOLTS M24 HV 10.9 · 1100 Nm · SPAN 12 m</text>`}
+ else{for(let i=0;i<5;i++){const x=50+i*70;g+=`<rect x="${x}" y="45" width="70" height="120" fill="none" stroke="#1F4E79"/><line x1="${x}" y1="45" x2="${x+70}" y2="165" stroke="#C47D00" stroke-width="1.4"/><line x1="${x+70}" y1="45" x2="${x}" y2="165" stroke="#C47D00" stroke-width="1.4"/>`}g+=`<text x="50" y="185" font-size="8.5" fill="#333">BRACING L100x10 · BOLTS M20 8.8</text>`}
+ return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg"><rect width="${w}" height="${h}" fill="#fff"/><rect x="8" y="8" width="${w-16}" height="${h-16}" fill="none" stroke="#222" stroke-width="1.2"/>${g}
+ <g transform="translate(222,200)"><rect width="170" height="62" fill="#fff" stroke="#222"/><line x1="0" y1="20" x2="170" y2="20" stroke="#222"/><line x1="0" y1="42" x2="170" y2="42" stroke="#222"/><line x1="120" y1="42" x2="120" y2="62" stroke="#222"/>
+ <text x="6" y="14" font-size="8" font-weight="700" fill="#1F4E79">APEX STEEL · ${esc(d.project)}</text><text x="6" y="35" font-size="7.5" fill="#222">${esc(d.title.slice(0,40))}</text><text x="6" y="56" font-size="9" font-family="monospace" fill="#222">${esc(id)}</text><text x="126" y="56" font-size="10" font-weight="700" fill="${isLatest(d)?'#1E8E5A':'#888'}">REV ${d.rev}</text></g></svg>`;
+}
+function photoSVG(d){
+ const sc=d.scene;let g='';
+ if(sc==='base'||sc==='base2'){g=`<rect width="400" height="260" fill="#B9B4AA"/><rect y="170" width="400" height="90" fill="#9C978D"/><rect x="150" y="150" width="110" height="34" fill="#6F7A84" stroke="#3F4750" stroke-width="2"/><rect x="185" y="20" width="40" height="132" fill="#59708A"/><rect x="178" y="20" width="54" height="10" fill="#4A5F75"/>${[160,250].map(x=>`<rect x="${x-3}" y="132" width="6" height="22" fill="#C9C9C9"/><rect x="${x-6}" y="140" width="12" height="7" fill="#999"/>`).join('')}<text x="194" y="80" font-size="22" font-weight="700" fill="#FFD84A">${sc==='base'?'A3':'A4'}</text>${sc==='base'?'<text x="160" y="175" font-size="11" fill="#fff">GL +0.050</text>':'<rect x="130" y="180" width="150" height="10" fill="#B07A3A"/>'}`}
+ else if(sc==='girder'){g=`<rect width="400" height="260" fill="#9CC3E6"/><rect y="200" width="400" height="60" fill="#A89A80"/><line x1="70" y1="200" x2="250" y2="20" stroke="#E2A100" stroke-width="9"/><text x="120" y="140" font-size="16" font-weight="700" fill="#222" transform="rotate(-45 120 140)">220t</text><line x1="250" y1="20" x2="250" y2="95" stroke="#333" stroke-width="2"/><rect x="200" y="95" width="100" height="8" fill="#555"/><line x1="210" y1="103" x2="190" y2="125" stroke="#333"/><line x1="290" y1="103" x2="310" y2="125" stroke="#333"/><rect x="150" y="125" width="200" height="22" fill="#5A7591" stroke="#33495F" stroke-width="2"/><rect x="40" y="185" width="70" height="26" fill="#E2A100"/>`}
+ else{g=`<rect width="400" height="260" fill="#5A6672"/><rect x="60" y="45" width="280" height="170" rx="8" fill="#D9DDE1" stroke="#9AA3AC" stroke-width="3"/><text x="80" y="85" font-size="17" font-weight="700" fill="#222">3~ MOTOR</text><text x="80" y="115" font-size="14" font-family="monospace" fill="#222">75 kW  380 V  50 Hz</text><text x="80" y="142" font-size="14" font-family="monospace" fill="#222">IP55  1485 rpm</text><text x="80" y="172" font-size="13" font-family="monospace" fill="#222">SN 2026-08812</text>`}
+ return `<svg viewBox="0 0 400 260" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+}
+function pageSVG(d){
+ const col={pdf:'#B23121',docx:'#1F57B8',xlsx:'#1A7A45',msg:'#156B78'}[d.ext]||'#555';
+ let lines='';
+ if(d.ext==='xlsx'){for(let r=0;r<9;r++)for(let c=0;c<4;c++)lines+=`<rect x="${40+c*80}" y="${40+r*22}" width="80" height="22" fill="${r===0?'#E1F4E8':'#fff'}" stroke="#CFD8D3"/>`}
+ else{for(let i=0;i<11;i++)lines+=`<rect x="40" y="${56+i*17}" width="${240+((i*37)%80)}" height="6" rx="3" fill="#D5DBE2"/>`;lines=`<rect x="40" y="32" width="200" height="10" rx="3" fill="${col}"/>`+lines}
+ const scan=d.kind==='scan'?'<rect width="400" height="260" fill="#F3EFE4" opacity=".55"/><text x="300" y="240" font-size="10" fill="#8A6100" font-weight="700">SCANNED · OCR</text>':'';
+ return `<svg viewBox="0 0 400 260" xmlns="http://www.w3.org/2000/svg"><rect width="400" height="260" fill="#fff"/>${lines}${scan}<rect x="330" y="14" width="56" height="20" rx="5" fill="${col}"/><text x="358" y="28" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">${d.ext.toUpperCase()}</text></svg>`;
+}
+const visual=d=>d.kind==='drawing'?drawingSVG(d):d.kind==='photo'?photoSVG(d):pageSVG(d);
+
+/* ============ SEARCH ENGINES ============ */
+function kwSearch(q){
+ const ts=toks(q);if(!ts.length)return[];
+ return D.map(d=>{const name=(d.name+' '+d.title).toLowerCase(),hay=(d.text+' '+d.tags).toLowerCase();let hit=0,sc=0;
+  ts.forEach(t=>{const a=name.split(t).length-1,b=hay.split(t).length-1;if(a||b)hit++;sc+=a*3+b});
+  return{d,sc:hit*100+sc,hit,terms:ts}}).filter(r=>r.hit>0).sort((a,b)=>b.sc-a.sc);
+}
+function smartSearch(q){
+ const qc=conceptsOf(q),ts=toks(q);
+ return D.map(d=>{const ov=qc.filter(c=>d.cs.includes(c));const hay=(d.title+' '+d.text+' '+d.tags).toLowerCase();const kw=ts.filter(t=>hay.includes(t)).length;
+  let p=0;if(qc.length)p=ov.length?Math.min(99,Math.round(55+38*ov.length/qc.length+Math.min(6,kw*2))):0;else p=kw?Math.min(90,40+kw*12):0;
+  const terms=ov.flatMap(c=>C[c].t).concat(ts);return{d,p,ov,terms}}).filter(r=>r.p>0).sort((a,b)=>b.p-a.p);
+}
+function applyFilters(rs){
+ return rs.filter(({d})=>{if(d.dupOf)return S.view==='search'?true:false;
+  if(S.type!=='all'){const m={drawing:['dwg','dxf'],pdf:['pdf'],docx:['docx'],xlsx:['xlsx'],photo:['jpg'],msg:['msg']};if(S.type==='drawing'?d.kind!=='drawing':!m[S.type].includes(d.ext))return false}
+  if(S.project!=='all'&&d.project!==S.project)return false;if(S.latest&&!isLatest(d))return false;return true})
+  .sort((a,b)=>S.sort==='date'?b.d.date.localeCompare(a.d.date):0);
+}
+function resRow(r,mode){
+ const d=r.d;const terms=r.terms;const sn=snippet(d.text,terms);
+ const rv=d.dno?(isLatest(d)?`<span class="badge b-latest">✓ Latest Rev ${d.rev}</span>`:`<span class="badge b-old">Superseded Rev ${d.rev}</span>`):'';
+ const why=mode==='smart'&&r.ov.length?`<div class="why">${r.ov.map(c=>`<span>≈ ${esc(C[c].l)}</span>`).join('')}${d.lang!=='EN'&&d.lang!=='—'?`<span>🌐 cross-language (${esc(d.lang)})</span>`:''}</div>`:'';
+ const sc=mode==='smart'?`<div class="score"><b>${r.p}%</b>meaning</div>`:`<div class="score"><b>${r.hit}/${toks(S.q).length}</b>words</div>`;
+ return `<div class="res" data-open="${d.id}"><div class="thumb">${visual(d)}</div><div class="body"><div class="t">${badge(d)} ${hl(d.name,terms)} ${rv} ${d.ocr?'<span class="badge b-ocr">OCR</span>':''} ${d.dupOf?'<span class="badge b-old">duplicate</span>':''}</div><div class="p">${esc(d.path)} · ${d.date} · ${d.size}</div><div class="s">${hl(sn,terms)}</div>${why}</div>${sc}</div>`;
+}
+
+/* ============ VIEWS ============ */
+const V={};
+function filtersHTML(){
+ const types=[['all','All'],['drawing','Drawings (DWG/DXF)'],['pdf','PDF'],['docx','Word'],['xlsx','Excel'],['photo','Photos'],['msg','Email']];
+ return `<div class="row" style="margin-bottom:6px">${types.map(([k,l])=>`<button class="chip ${S.type===k?'on':''}" data-type="${k}">${l}</button>`).join('')}</div>
+ <div class="row" style="margin-top:8px"><select id="fproj"><option value="all">All projects</option>${Object.entries(PROJ).map(([k,v])=>`<option value="${k}" ${S.project===k?'selected':''}>${v}</option>`).join('')}</select>
+ <label class="row" style="gap:6px;cursor:pointer"><input type="checkbox" id="flatest" ${S.latest?'checked':''}> Latest revision only</label>
+ <select id="fsort"><option value="rel">Sort: relevance</option><option value="date" ${S.sort==='date'?'selected':''}>Sort: newest</option></select></div>`;
+}
+V.search=()=>{
+ const ex=['anchor bolt','M24 10.9','grout','A3','torque 1100','螺栓','tige d\'ancrage','IP55'];
+ const rs=S.q?applyFilters(kwSearch(S.q)):[];
+ return `<h1>Keyword search</h1><p class="sub">Full-text search inside every file — including text read by OCR from photos and scans, and title blocks of DWG/DXF drawings.</p>
+ <div class="card"><div class="bigsearch"><input id="q" value="${esc(S.q)}" placeholder="Type words, a drawing number, a bolt size…"><button class="btn" id="go">Search</button></div>
+ <div class="row" style="margin-bottom:12px"><span style="color:var(--muted);font-size:12px">Try:</span>${ex.map(e=>`<button class="chip ex" data-ex="${esc(e)}">${esc(e)}</button>`).join('')}</div>${filtersHTML()}</div>
+ ${S.q?`<p class="sub" style="margin:14px 0 0">${rs.length} result${rs.length===1?'':'s'} in 0.0${3+rs.length%5} s · ${D.length} files indexed</p><div class="results">${rs.map(r=>resRow(r,'kw')).join('')||'<div class="empty">No exact words found. Try <a href="#smart" data-go-smart>Smart search</a> — it searches by meaning.</div>'}</div>`:'<div class="empty">Type something to search your documents.</div>'}`;
+};
+V.smart=()=>{
+ const ex=['column foot fixing','how tight should the crane bolts be','paint thickness','problem with bolt position','吊车梁','sécurité levage','motor test results'];
+ const q=S.sq;const rs=q?applyFilters(smartSearch(q)):[];
+ return `<h1>Smart search <span class="badge b-ocr" style="vertical-align:middle">AI · ${S.online?'online boost':'offline'}</span></h1><p class="sub">Search by meaning, in any language. "column foot fixing" also finds "anchor bolts", "tiges d'ancrage" and "地脚螺栓".</p>
+ <div class="card"><div class="bigsearch"><input id="sq" value="${esc(q)}" placeholder="Describe what you are looking for, in your own words…"><button class="btn" id="sgo">Search</button></div>
+ <div class="row" style="margin-bottom:12px"><span style="color:var(--muted);font-size:12px">Try:</span>${ex.map(e=>`<button class="chip ex" data-sex="${esc(e)}">${esc(e)}</button>`).join('')}</div>${filtersHTML()}
+ <div style="font-size:12px;color:var(--muted);margin-top:10px">Model: <b>bge-m3</b> multilingual embeddings (runs on your laptop) ${S.online?'+ cloud re-ranking':''}</div></div>
+ ${q?`<p class="sub" style="margin:14px 0 0">${rs.length} results ranked by meaning${conceptsOf(q).length?` · understood: ${conceptsOf(q).map(c=>`<b>${esc(C[c].l)}</b>`).join(', ')}`:''}</p><div class="results">${rs.map(r=>resRow(r,'smart')).join('')||'<div class="empty">Nothing close in meaning. Try other words.</div>'}</div>`:''}`;
+};
+V.assistant=()=>{
+ const sug=['What bolt grade and torque for the crane girder connections?','Summarise the crane girder method statement','What changed between Rev B and Rev C of D-2401-S-101?','Extract the bolt list to Excel','How long before loading after grouting?','Any non-conformance on anchor bolts?'];
+ return `<h1>AI assistant</h1><p class="sub">Ask questions about your documents. Every answer shows its sources — click to open the exact file.</p>
+ <div class="card chat"><div class="row" style="justify-content:space-between;margin-bottom:6px"><span style="font-size:12px;color:var(--muted)">Model: <b>${esc(S.online?S.cloud:S.model)}</b> · ${S.online?'☁️ online':'🔒 offline, documents stay on your laptop'}</span><button class="btn ghost sm" id="clr">New chat</button></div>
+ <div class="msgs" id="msgs">${S.chat.length?S.chat.map(msgHTML).join(''):`<div class="empty" style="padding:24px">Ask anything about your ${D.length} indexed files.<div class="row" style="justify-content:center;margin-top:14px">${sug.map(s=>`<button class="chip ex" data-ask="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}</div>
+ <form class="composer" id="cform"><input id="cin" placeholder="Ask a question about your documents…" autocomplete="off"><button class="btn">Send</button></form></div>`;
+};
+V.library=()=>{
+ const cols=[['name','File'],['ext','Type'],['project','Project'],['dno','Drawing no.'],['rev','Rev'],['material','Material'],['lang','Lang'],['date','Date']];
+ const rows=D.filter(d=>!d.dupOf).slice().sort((a,b)=>String(a[S.libSort]||'').localeCompare(String(b[S.libSort]||''))*S.libDir);
+ return `<h1>Library &amp; tags</h1><p class="sub">Information pulled out automatically: drawing number, revision, project, steel grade, language. Click a column to sort.</p>
+ <div class="grid3" style="margin-bottom:14px">${stat(D.filter(d=>d.kind==='drawing'&&!d.dupOf).length,'drawings')}${stat(D.filter(d=>d.kind==='photo'&&!d.dupOf).length,'photos with OCR')}${stat(D.filter(d=>!d.dupOf).length,'files tagged')}</div>
+ <div class="card" style="padding:0;overflow:auto;max-height:calc(100vh - 290px)"><table><thead><tr>${cols.map(([k,l])=>`<th data-sort="${k}">${l}${S.libSort===k?(S.libDir>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>
+ ${rows.map(d=>`<tr class="click" data-open="${d.id}"><td>${esc(d.name)}</td><td>${badge(d)}</td><td>${d.project}</td><td class="mono">${d.dno||'—'}</td><td>${d.rev?`<span class="badge ${isLatest(d)?'b-latest':'b-old'}">${d.rev}</span>`:'—'}</td><td>${d.material||'—'}</td><td>${d.lang}</td><td class="mono">${d.date}</td></tr>`).join('')}</tbody></table></div>`;
+};
+const stat=(n,l)=>`<div class="stat"><b>${n}</b><span>${l}</span></div>`;
+function revGroups(){const g={};D.filter(d=>d.dno&&!d.dupOf).forEach(d=>(g[d.dno]=g[d.dno]||[]).push(d));Object.values(g).forEach(a=>a.sort((x,y)=>x.rev.localeCompare(y.rev)));return g}
+function diff(a,b){const sa=a.text.split(/(?<=\.)\s+/),sb=b.text.split(/(?<=\.)\s+/);const out=[];sa.forEach(s=>{if(!sb.includes(s))out.push(['del',s])});sb.forEach(s=>out.push([sa.includes(s)?'same':'add',s]));return out}
+V.revisions=()=>{
+ const g=revGroups();const keys=Object.keys(g);if(!S.revDno||!g[S.revDno])S.revDno=keys.find(k=>g[k].length>1)||keys[0];
+ const arr=g[S.revDno];if(!S.revA||!arr.find(d=>d.id===S.revA)){S.revB=arr[arr.length-1].id;S.revA=(arr[arr.length-2]||arr[0]).id}
+ const A=byId(S.revA),B=byId(S.revB);
+ return `<h1>Revisions</h1><p class="sub">Every revision of each drawing is grouped automatically. The latest is flagged so you never build from an old one.</p>
+ <div class="grid2" style="grid-template-columns:300px 1fr"><div class="card" style="padding:8px">${keys.map(k=>`<div class="res" style="margin:4px 0;padding:9px;${k===S.revDno?'border-color:var(--steel2);background:var(--steelSoft)':''}" data-dno="${k}"><div class="body"><div class="t mono" style="font-size:12.5px">${k}</div><div class="s" style="font-size:12px">${esc(g[k][0].title)}</div><div class="row" style="gap:4px;margin-top:5px">${g[k].map(d=>`<span class="badge ${isLatest(d)?'b-latest':'b-old'}">${d.rev}</span>`).join('')}</div></div></div>`).join('')}</div>
+ <div class="card"><div class="row" style="justify-content:space-between"><b class="mono">${S.revDno}</b><span style="font-size:12px;color:var(--muted)">Click a revision: first = old (red), second = new (green)</span></div>
+ <div class="tl">${arr.map(d=>`<span class="r ${isLatest(d)?'lt':''} ${d.id===S.revA?'selA':''} ${d.id===S.revB?'selB':''}" data-rv="${d.id}">Rev ${d.rev} · ${d.date}${isLatest(d)?' ✓':''}</span>`).join('')}</div>
+ ${A.id===B.id?'<div class="empty">Only one revision for this drawing.</div>':`<h3 style="font-size:14px;margin:16px 0 6px">Changes Rev ${A.rev} → Rev ${B.rev}</h3><div class="diff">${diff(A,B).map(([k,s])=>`<div class="${k}">${k==='add'?'＋ ':k==='del'?'－ ':''}${esc(s)}</div>`).join('')}</div>`}
+ <div class="grid2" style="margin-top:14px"><div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">Rev ${A.rev}</div><div class="visual" data-open="${A.id}" style="cursor:pointer">${drawingSVG(A)}</div></div><div><div style="font-size:12px;color:var(--muted);margin-bottom:4px">Rev ${B.rev}</div><div class="visual" data-open="${B.id}" style="cursor:pointer">${drawingSVG(B)}</div></div></div></div></div>`;
+};
+V.photos=()=>{
+ const ph=D.filter(d=>d.kind==='photo');const sel=S.photoSel?byId(S.photoSel):null;
+ let list=ph.map(d=>({d,s:null}));
+ if(sel||S.dropImg){const ref=sel||{scene:'base',labels:['column base','anchor bolts','concrete']};list=ph.filter(d=>!sel||d.id!==sel.id).map(d=>{const sh=d.labels.filter(l=>ref.labels.includes(l)).length;const s=d.hash===ref.hash?99:Math.min(97,Math.round(25+(d.scene.slice(0,4)===ref.scene.slice(0,4)?40:0)+sh*9));return{d,s}}).sort((a,b)=>b.s-a.s)}
+ return `<h1>Photos &amp; OCR</h1><p class="sub">Text in photos is read automatically (French, English, Chinese). Objects are recognised. Click a photo, then find similar ones.</p>
+ <label class="drop" id="drop"><input type="file" accept="image/*" id="fimg" hidden>📷 <b>Drop a photo here</b> (or click) to find similar site photos</label>
+ ${S.dropImg?`<div class="card" style="margin-top:12px;display:flex;gap:14px;align-items:center"><img src="${S.dropImg}" style="width:140px;height:96px;object-fit:cover;border-radius:8px"><div><b>Your photo</b><div style="font-size:12.5px;color:var(--muted)">Simulated analysis: detected <i>steel column, concrete, bolts</i>. Ranked similar photos below.</div><button class="btn ghost sm" id="clrdrop" style="margin-top:8px">Clear</button></div></div>`:''}
+ ${sel?`<div class="card" style="margin-top:12px;display:grid;grid-template-columns:220px 1fr;gap:14px"><div class="visual" style="margin:0">${photoSVG(sel)}</div><div><b>${esc(sel.name)}</b><div style="font-size:12px;color:var(--muted)">${esc(sel.path)}</div><div style="margin:8px 0"><b style="font-size:12px">Text found (OCR)</b><div class="txt" style="margin-top:4px">${esc(sel.text)}</div></div><div class="why">${sel.labels.map(l=>`<span>🏷 ${esc(l)}</span>`).join('')}</div><div class="row" style="margin-top:10px"><button class="btn sm" data-open="${sel.id}">Open details</button><button class="btn ghost sm" id="clrsel">Show all photos</button></div></div></div><h3 style="font-size:14px;margin:16px 0 8px">Similar photos</h3>`:'<div style="height:14px"></div>'}
+ <div class="pgrid">${list.map(({d,s})=>`<div class="ph ${S.photoSel===d.id?'sel':''}" data-ph="${d.id}">${photoSVG(d)}${s!=null?`<span class="sim">${s}% similar</span>`:''}<div class="c"><b>${esc(d.title)}</b><div style="color:var(--muted)">${d.date}${d.dupOf?' · duplicate':''}</div></div></div>`).join('')}</div>`;
+};
+V.duplicates=()=>{
+ const g={};D.forEach(d=>(g[d.hash]=g[d.hash]||[]).push(d));const dups=Object.values(g).filter(a=>a.length>1);
+ return `<h1>Duplicates</h1><p class="sub">Same file saved in several places (Downloads, WeChat, phone…). Keep the one in your project folder.</p>
+ ${dups.map(a=>`<div class="card" style="margin-bottom:12px"><div class="row" style="justify-content:space-between;margin-bottom:8px"><b>${esc(a[0].title)}</b><span class="badge b-ocr">${a.length} identical copies · ${a[0].size} each</span></div>
+ ${a.map((d,i)=>`<div class="row" style="padding:7px 0;border-top:1px solid var(--line)"><div style="width:70px;height:46px;border:1px solid var(--line);border-radius:6px;overflow:hidden">${visual(d)}</div><div style="flex:1;min-width:0"><div>${badge(d)} ${esc(d.name)}</div><div class="p mono" style="font-size:11.5px;color:var(--muted)">${esc(d.path)}</div></div>${i===0?'<span class="badge b-latest">Keep (project folder)</span>':`<button class="btn ghost sm" data-del="${d.id}">Move to _to_delete</button>`}</div>`).join('')}</div>`).join('')||'<div class="empty">No duplicates 🎉</div>'}`;
+};
+V.folders=()=>{
+ const cnt=k=>D.filter(d=>d.kind===k).length;
+ return `<h1>Folders &amp; index</h1><p class="sub">Choose which folders to watch. New and changed files are indexed automatically in the background.</p>
+ <div class="grid3" style="margin-bottom:14px">${stat(D.length,'files indexed')}${stat(cnt('drawing'),'drawings (PDF/DWG/DXF)')}${stat(cnt('photo')+D.filter(d=>d.kind==='scan').length,'OCR processed')}</div>
+ <div class="grid2"><div class="card"><b>Watched folders</b>
+ ${[['D:\\Projects',18,true],['D:\\Apex Steel (synced from phone)',6,true],['D:\\Mail',1,true],['E:\\Archive',2,true],['C:\\Users\\Phoc\\Downloads',1,false],['C:\\Users\\Phoc\\Pictures\\WeChat',1,false]].map(([p,n,on],i)=>`<div class="row" style="justify-content:space-between;padding:9px 0;border-top:${i?'1px solid var(--line)':'0'}"><div><div class="mono">📁 ${esc(p)}</div><div style="font-size:12px;color:var(--muted)">${n} file${n>1?'s':''}</div></div><button class="switch ${on?'on':''}" data-sw></button></div>`).join('')}
+ <div class="row" style="margin-top:10px"><button class="btn ghost sm" id="addf">＋ Add folder</button></div></div>
+ <div class="card"><b>Indexing</b><p style="font-size:12.5px;color:var(--muted);margin:4px 0 10px">Supported: PDF · Word (.docx/.doc) · Excel (.xlsx/.csv) · PowerPoint · DWG/DXF (via ODA converter) · JPG/PNG/HEIC (OCR) · scanned PDF (OCR) · Outlook .msg/.eml · TXT</p>
+ <div class="bar"><i id="pbar"></i></div><div class="row" style="justify-content:space-between;margin-top:8px"><span id="ptxt" style="font-size:12px;color:var(--muted)">Index up to date · 182 MB · last update 2 min ago</span><button class="btn sm" id="reidx">Re-index now</button></div><div class="log" id="plog">Ready.</div></div></div>`;
+};
+V.settings=()=>`<h1>Settings</h1><p class="sub">Everything works offline. Online only adds extras.</p>
+ <div class="card"><div class="set">
+ <label>Mode</label><div class="row"><button class="chip ${!S.online?'on':''}" data-setm="off">🔒 Offline</button><button class="chip ${S.online?'on':''}" data-setm="on">☁️ Online</button></div>
+ <label>Local AI model (offline)</label><select id="smodel">${['Qwen2.5-7B-Instruct (Q4, local)','Qwen2.5-14B-Instruct (Q4, local)','Llama 3.1 8B (Q4, local)'].map(m=>`<option ${m===S.model?'selected':''}>${m}</option>`).join('')}</select>
+ <label>Cloud AI (online)</label><select id="scloud">${['Qwen-Max (Alibaba Cloud)','DeepSeek-V3','None'].map(m=>`<option ${m===S.cloud?'selected':''}>${m}</option>`).join('')}</select>
+ <label>Smart search model</label><span>bge-m3 (multilingual, 2.2 GB, offline)</span>
+ <label>OCR languages</label><div class="row">${[['fr','Français'],['en','English'],['zh','中文']].map(([k,l])=>`<label class="row" style="gap:5px;color:var(--text)"><input type="checkbox" data-ocr="${k}" ${S.ocr[k]?'checked':''}>${l}</label>`).join('')}<span style="font-size:12px;color:var(--muted)">PaddleOCR</span></div>
+ <label>DWG converter</label><span class="mono">C:\\Program Files\\ODA\\ODAFileConverter.exe ✓</span>
+ <label>Sync with Apex Steel app</label><div class="row"><button class="switch ${S.sync?'on':''}" id="ssync"></button><span style="font-size:12.5px;color:var(--muted)">${S.sync?(S.online?'Phone & tablet: synced 2 min ago':'Waiting for Wi-Fi (offline)'):'Off'}</span></div>
+ <label>Hardware detected</label><span>16 GB RAM · NVIDIA RTX 3050 4 GB · Windows 11 <i style="color:var(--muted)">(simulated)</i></span>
+ <label>Index location</label><span class="mono">D:\\ApexSteelSearch\\index</span>
+ </div></div>`;
+
+/* ============ ASSISTANT ENGINE ============ */
+function msgHTML(m){if(m.r==='u')return `<div class="m u">${esc(m.t)}</div>`;if(m.typing)return `<div class="m a"><div class="who">🤖 Apex AI</div><div class="typing"><span></span><span></span><span></span></div></div>`;
+ return `<div class="m a"><div class="who">🤖 Apex AI · ${esc(m.model)}</div>${m.h}${m.src&&m.src.length?`<div class="srcs"><b>Sources</b>${m.src.map((id,i)=>`<div data-open="${id}">[${i+1}] ${esc(byId(id).name)}</div>`).join('')}</div>`:''}</div>`}
+const cite=(src,id)=>`<span class="cite" data-open="${id}">${src.indexOf(id)+1}</span>`;
+function answer(q){
+ const l=q.toLowerCase();let src,h;
+ if(/(bolt|螺栓|boulon|torque|扭矩)/.test(l)&&/(crane|girder|吊车|pont)/.test(l)){src=[3,4,18,22];h=`For the crane girder connections:<ul><li><b>Bolts M24 HV, grade 10.9</b>, preloaded ${cite(src,3)} ${cite(src,4)}</li><li><b>Tightening torque 1100 Nm</b>, torque method, with hardened washers on both sides ${cite(src,4)}</li><li>10% of bolts checked by the inspector ${cite(src,4)} — the Chinese briefing says the same (终拧扭矩 1100 N·m, 抽检10%) ${cite(src,18)}</li><li>Torque wrench TW-07 is calibrated (+1.8% at 1100 Nm), valid until 2027-03-15 ${cite(src,22)}</li></ul>`}
+ else if(/(summar|résum|总结|method statement)/.test(l)){src=[5,23];h=`<b>Method statement MS-2401-007 — erection of crane girders</b> ${cite(src,5)}<ul><li><b>Scope:</b> runway girders axis 1 to 6</li><li><b>Equipment:</b> 220 t crawler crane, 2 × 25 t chain blocks, 26 m man-lift</li><li><b>Sequence:</b> check bracket levels → lift with spreader beam → bolts snug-tight → survey alignment → preload to 1100 Nm</li><li><b>Permits:</b> lifting + working at height, daily</li><li><b>Safety:</b> exclusion zone 1.5 × boom, harness above 2 m, stop above 9.8 m/s wind</li><li><b>Inspection:</b> 10% torque check, survey before rail</li></ul>Heaviest lift is 20 t at 22 m radius, crane utilisation 65% ${cite(src,23)}.`}
+ else if(/(rev|change|differ|compare|modif)/.test(l)){src=[2,1];h=`Comparing <b>D-2401-S-101</b> Rev B ${cite(src,2)} with Rev C ${cite(src,1)}:<ul><li style="color:#14603D">＋ Base plate thickness <b>35 mm → 40 mm</b></li><li style="color:#14603D">＋ <b>Shear key HEA 160</b> added on columns A3 and A4</li><li>No change to anchor bolts (M36 8.8, 900 mm), grout or tolerances</li></ul>⚠️ A copy of Rev C is also in your Downloads folder, and Rev B is superseded — don't use it on site.`}
+ else if(/(extract|excel|list|bom|table|tableau)/.test(l)){src=[7];const rows=[['M36 x 1200 anchor bolt','8.8 HDG','96','Columns A–F'],['M24 x 90 HV bolt','10.9','384','Crane girders'],['M20 x 70 bolt','8.8','520','Roof bracing'],['Hardened washer M24','—','768','Crane girders'],['Non-shrink grout 25 kg','—','140 bags','Column bases']];S.lastCSV='Item;Grade;Qty;Location\n'+rows.map(r=>r.join(';')).join('\n');
+  h=`Here is the bolt & anchor list from the BOM ${cite(src,7)}:<table><tr><th>Item</th><th>Grade</th><th>Qty</th><th>Location</th></tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table><div class="row"><button class="btn sm amber" data-copycsv>📋 Copy for Excel</button><button class="btn ghost sm" data-savex>💾 Save as .xlsx</button></div>`}
+ else if(/(grout|calage|灌浆|curing|loading)/.test(l)){src=[20,1,18];h=`Grout under the column bases must reach <b>30 MPa before loading</b> with crane girders — about <b>3 days at 20 °C</b>, 5 days below 10 °C. Send cube test results before erection ${cite(src,20)}.<br><br>The grout itself: 50 mm non-shrink, min 60 MPa final strength; remove levelling nuts after grouting ${cite(src,1)}. The Chinese briefing gives the same 30 MPa rule ${cite(src,18)}.`}
+ else if(/(ncr|non.?conform|problem|deviation|misalign|issue)/.test(l)){src=[12,13];h=`Yes — <b>NCR-2401-012</b> (scanned, read by OCR) ${cite(src,12)}:<ul><li>Anchor bolt at <b>column C2</b> was <b>12 mm out</b> (tolerance ±3 mm)</li><li>Cause: template moved during concrete pouring</li><li>Fix: bolt cut, resin anchor M36 installed, approved by designer</li><li>Status: <b>closed 14 Nov 2026</b></li></ul>Also open in the daily report of 12 Nov: 2 bolts M24 missing at girder G3-2 ${cite(src,13)}.`}
+ else if(/(paint|coat|dft|peinture|防腐)/.test(l)){src=[14];h=`Coating system ${cite(src,14)}: Sa 2.5 blasting → zinc-rich epoxy primer 60 µm → epoxy MIO 120 µm → polyurethane topcoat 60 µm. <b>Total DFT ≥ 240 µm.</b> Galvanized parts get a duplex system; touch up bolts after erection.`}
+ else{const rs=smartSearch(q).slice(0,3);if(!rs.length){src=[];h=`I couldn't find anything about that in your indexed files. Try other words, or add the folder that contains it in <b>Folders &amp; index</b>.`}else{src=rs.map(r=>r.d.id);h=`Here is what I found most related:<ul>${rs.map(r=>`<li><b>${esc(r.d.title)}</b> ${cite(src,r.d.id)} — ${esc(snippet(r.d.text,r.terms,90))}</li>`).join('')}</ul>${S.online?'':'<i style="color:var(--muted);font-size:12px">Tip: switch to Online for a more detailed answer from the cloud model.</i>'}`}}
+ return{h,src};
+}
+function ask(q){if(!q.trim())return;S.chat.push({r:'u',t:q});S.chat.push({r:'a',typing:true});render();const delay=S.online?700:1300;
+ setTimeout(()=>{const a=answer(q);S.chat.pop();S.chat.push({r:'a',h:a.h,src:a.src,model:S.online?S.cloud:S.model});render()},delay)}
+
+/* ============ DRAWER ============ */
+function openDoc(id){const d=byId(id);if(!d)return;const terms=S.view==='smart'?smartSearch(S.sq).find(r=>r.d.id===d.id)?.terms||[]:toks(S.q);
+ const rvs=d.dno?D.filter(o=>o.dno===d.dno&&!o.dupOf).sort((a,b)=>a.rev.localeCompare(b.rev)):[];
+ $('#dh').innerHTML=`<div style="min-width:0"><h2>${esc(d.title)}</h2><div class="row" style="gap:6px">${badge(d)}${d.dno?`<span class="badge ${isLatest(d)?'b-latest':'b-old'}">${isLatest(d)?'✓ Latest':'Superseded'} Rev ${d.rev}</span>`:''}${d.ocr?'<span class="badge b-ocr">OCR</span>':''}<span class="badge b-lang">${esc(d.lang)}</span></div></div><button class="x" id="dx">×</button>`;
+ $('#db').innerHTML=`<div class="visual">${visual(d)}</div><div class="meta"><div>File</div><div class="mono" style="word-break:break-all">${esc(d.name)}</div><div>Folder</div><div class="mono" style="word-break:break-all">${esc(d.path)}</div><div>Project</div><div>${esc(PROJ[d.project])}</div><div>Date · size</div><div>${d.date} · ${d.size}</div>${d.dno?`<div>Drawing no.</div><div class="mono">${d.dno}</div><div>Revisions</div><div class="row" style="gap:4px">${rvs.map(o=>`<span class="badge ${isLatest(o)?'b-latest':'b-old'}" style="cursor:pointer" data-open="${o.id}">${o.rev}</span>`).join('')}</div>`:''}${d.material?`<div>Material</div><div>${d.material}</div>`:''}${d.labels?`<div>Detected</div><div>${d.labels.join(', ')}</div>`:''}</div>
+ <b style="font-size:12.5px">Extracted text</b><div class="txt" style="margin-top:6px">${hl(d.text,terms)}</div>`;
+ $('#df').innerHTML=`<button class="btn sm" data-act="Opening file in default app…">Open file</button><button class="btn ghost sm" data-act="Opening folder in Explorer…">Open folder</button><button class="btn ghost sm" data-act="Added to today's Apex Steel daily report">＋ Daily report</button><button class="btn ghost sm" data-askabout="${d.id}">💬 Ask AI about it</button>`;
+ $('#drawer').classList.add('open')}
+const closeDrawer=()=>$('#drawer').classList.remove('open');
+
+/* ============ RENDER & EVENTS ============ */
+function render(){
+ document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('on',a.dataset.v===S.view));
+ document.querySelectorAll('#modeSw button').forEach(b=>b.classList.toggle('on',(b.dataset.m==='on')===S.online));
+ $('#hstat').innerHTML=`${D.length} files · ${S.online?'☁️ Online':'🔒 Offline'}${S.sync?(S.online?' · 📱 synced':' · 📱 sync paused'):''}`;
+ $('#main').innerHTML=(S.online?'':'')+V[S.view]();
+ const m=$('#msgs');if(m)m.scrollTop=m.scrollHeight;
+ if(S.view==='assistant'){const ci=$('#cin');ci&&ci.focus()}
+}
+function go(v){S.view=v;try{history.replaceState(null,'','#'+v)}catch(e){location.hash=v}render();$('#main').scrollTop=0}
+function setMode(on){S.online=on;render();toast(on?'Online: cloud AI and phone sync enabled':'Offline: everything runs on your laptop')}
+
+document.addEventListener('click',e=>{
+ const t=e.target.closest('[data-v],[data-open],[data-type],[data-ex],[data-sex],[data-ask],[data-sort],[data-dno],[data-rv],[data-ph],[data-del],[data-sw],[data-m],[data-setm],[data-act],[data-askabout],[data-copycsv],[data-savex],[data-go-smart],#go,#sgo,#dx,#clr,#reidx,#addf,#clrsel,#clrdrop,#ssync');
+ if(!t)return;const ds=t.dataset;
+ if(ds.v){e.preventDefault();go(ds.v)}
+ else if(ds.goSmart!==undefined){e.preventDefault();S.sq=S.q;go('smart')}
+ else if(ds.open){openDoc(+ds.open)}
+ else if(ds.type){S.type=ds.type;render()}
+ else if(ds.ex){S.q=ds.ex;$('#gq').value=S.q;render()}
+ else if(ds.sex){S.sq=ds.sex;$('#gq').value=S.sq;render()}
+ else if(ds.ask){ask(ds.ask)}
+ else if(ds.sort){S.libDir=S.libSort===ds.sort?-S.libDir:1;S.libSort=ds.sort;render()}
+ else if(ds.dno){S.revDno=ds.dno;S.revA=S.revB=null;render()}
+ else if(ds.rv){const id=+ds.rv;const a=byId(S.revA),c=byId(id);if(c.rev<byId(S.revB).rev||id===S.revB)S.revA=id;else S.revB=id;render()}
+ else if(ds.ph){S.photoSel=+ds.ph;S.dropImg=null;render();$('#main').scrollTop=0}
+ else if(ds.del){toast('Moved to _to_delete folder (simulation)');t.outerHTML='<span class="badge b-old">moved</span>'}
+ else if(ds.sw!==undefined){t.classList.toggle('on');toast(t.classList.contains('on')?'Folder will be watched':'Folder excluded from index')}
+ else if(ds.m){setMode(ds.m==='on')}
+ else if(ds.setm){setMode(ds.setm==='on')}
+ else if(ds.act){toast(ds.act+' (simulation)')}
+ else if(ds.askabout){const d=byId(+ds.askabout);closeDrawer();S.view='assistant';render();ask(d.title.toLowerCase().includes('method')?'Summarise the crane girder method statement':('What is important in '+d.title+'?'))}
+ else if(ds.copycsv!==undefined){navigator.clipboard.writeText(S.lastCSV||'').then(()=>toast('Copied — paste into Excel'),()=>toast('Copy blocked by the browser here — works in the real app'))}
+ else if(ds.savex!==undefined){toast('Saved BOM_bolts.xlsx to D:\\Projects\\P-2401\\Material (simulation)')}
+ else if(t.id==='go'){S.q=$('#q').value;$('#gq').value=S.q;render()}
+ else if(t.id==='sgo'){S.sq=$('#sq').value;$('#gq').value=S.sq;render()}
+ else if(t.id==='dx'){closeDrawer()}
+ else if(t.id==='clr'){S.chat=[];render()}
+ else if(t.id==='clrsel'){S.photoSel=null;render()}
+ else if(t.id==='clrdrop'){S.dropImg=null;render()}
+ else if(t.id==='ssync'){S.sync=!S.sync;render()}
+ else if(t.id==='addf'){toast('Folder picker opens in the real app (simulation)')}
+ else if(t.id==='reidx'){reindex()}
+});
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape')closeDrawer();
+ if(e.key==='Enter'){if(e.target.id==='q'){S.q=e.target.value;$('#gq').value=S.q;render()}else if(e.target.id==='sq'){S.sq=e.target.value;$('#gq').value=S.sq;render()}}
+});
+document.addEventListener('change',e=>{const t=e.target;
+ if(t.id==='fproj'){S.project=t.value;render()}else if(t.id==='flatest'){S.latest=t.checked;render()}else if(t.id==='fsort'){S.sort=t.value;render()}
+ else if(t.id==='smodel'){S.model=t.value;toast('Local model: '+t.value)}else if(t.id==='scloud'){S.cloud=t.value;toast('Cloud model: '+t.value)}
+ else if(t.dataset.ocr){S.ocr[t.dataset.ocr]=t.checked}
+ else if(t.id==='fimg'&&t.files[0]){loadImg(t.files[0])}
+});
+document.addEventListener('submit',e=>{if(e.target.id==='cform'){e.preventDefault();const i=$('#cin');const v=i.value;i.value='';ask(v)}});
+document.addEventListener('dragover',e=>{const d=e.target.closest&&e.target.closest('#drop');if(d){e.preventDefault();d.classList.add('over')}});
+document.addEventListener('dragleave',e=>{const d=e.target.closest&&e.target.closest('#drop');if(d)d.classList.remove('over')});
+document.addEventListener('drop',e=>{const d=e.target.closest&&e.target.closest('#drop');if(d){e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))loadImg(f)}});
+function loadImg(f){S.dropImg=URL.createObjectURL(f);S.photoSel=null;render()}
+let gt;$('#gq').addEventListener('input',e=>{clearTimeout(gt);gt=setTimeout(()=>{const v=e.target.value;if(S.view==='smart'){S.sq=v}else{S.q=v;if(S.view!=='search')S.view='search'}render();},250)});
+$('#gq').addEventListener('keydown',e=>{if(e.key==='Enter'){clearTimeout(gt);const v=e.target.value;if(S.view==='assistant'){ask(v);e.target.value='';return}if(S.view==='smart')S.sq=v;else{S.q=v;S.view='search'}render()}});
+
+function reindex(){if(S.indexing)return;S.indexing=true;const log=$('#plog'),bar=$('#pbar'),txt=$('#ptxt');log.textContent='';let i=0;
+ const steps=D.map(d=>`${d.kind==='photo'||d.kind==='scan'?'OCR   ':d.ext==='dwg'?'DWG→DXF':d.kind==='drawing'?'TITLE ':'TEXT  '} ${d.name}`).concat(['EMBED  bge-m3 vectors for 24 files','DONE   index optimised (182 MB)']);
+ const iv=setInterval(()=>{if(!$('#plog')){clearInterval(iv);S.indexing=false;return}log.textContent+=steps[i]+'\n';log.scrollTop=log.scrollHeight;i++;const p=Math.round(i/steps.length*100);$('#pbar').style.width=p+'%';$('#ptxt').textContent=`Indexing… ${p}%`;
+  if(i>=steps.length){clearInterval(iv);S.indexing=false;$('#ptxt').textContent='Index up to date · 182 MB · just now';toast('Index updated')}},140)}
+
+const views=Object.keys(V);
+function fromHash(){const h=location.hash.slice(1);if(views.includes(h)){S.view=h;render()}}
+window.addEventListener('hashchange',fromHash);
+S.q='anchor bolt';
+if(views.includes(location.hash.slice(1)))S.view=location.hash.slice(1);
+render();
+</script>
+</body>
+</html>
