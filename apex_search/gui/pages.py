@@ -1012,6 +1012,19 @@ class FoldersPage(Page):
         self.ctx.folders_changed()
 
 
+def _reader_report():
+    from .. import iba
+    lines = []
+    for label, fn in (("ibaAnalyzer (recommended)", iba.analyzer_status), ("ibaFilesLite", iba.com_reader_status),
+                      ("open-source iba-py", iba.dat_reader_status)):
+        try:
+            ok, txt = fn()
+        except Exception as e:
+            ok, txt = False, str(e)
+        lines.append(("✔ " if ok else "✘ ") + f"{label}: {txt}")
+    return "\n".join(lines)
+
+
 # ================================================================== settings
 class SettingsPage(Page):
     def __init__(self, ctx):
@@ -1084,17 +1097,12 @@ class SettingsPage(Page):
         form.addRow("Project code pattern", self.preg)
         form.addRow("Skip folders named", self.excl)
         section("Components")
-        from .. import iba as _iba
-        ok, txt = _iba.com_reader_status()
-        lb = QLabel(("✔ " if ok else "✘ ") + txt)
-        lb.setWordWrap(True)
-        form.addRow("iba official reader", lb)
-        ok, txt = _iba.dat_reader_status()
-        lb2 = QLabel(("✔ " if ok else "✘ ") + txt)
-        lb2.setWordWrap(True)
-        form.addRow("open-source .dat reader", lb2)
-        form.addRow("", sub("Your PDA3 .dat files need the iba official reader (ibaFilesLite.dll). Search your PC for "
-                            "ibaFilesLite.dll and register it as administrator:  regsvr32 \"…\\ibaFilesLite.dll\""))
+        self.comp_lbl = QLabel("Click “Check .dat readers” to test (it starts ibaAnalyzer in the background).")
+        self.comp_lbl.setWordWrap(True)
+        cb = button("Check .dat readers", ghost=True)
+        cb.clicked.connect(self.check_readers)
+        form.addRow("iba .dat readers", self.comp_lbl)
+        form.addRow("", cb)
         row = QHBoxLayout()
         save = button("Save settings")
         save.clicked.connect(self.save)
@@ -1116,6 +1124,13 @@ class SettingsPage(Page):
         self.eprov.setCurrentIndex(max(0, self.eprov.findData(c["embed_provider"])))
         self.auto.setChecked(bool(c["auto_smart"]))
         self.ocr.setChecked(bool(c["ocr_enabled"]))
+
+    def check_readers(self):
+        self.comp_lbl.setText("Checking…")
+        self.ctx.runner.run(_reader_report, (), self.on_readers, self.on_readers)
+
+    def on_readers(self, txt):
+        self.comp_lbl.setText(str(txt))
 
     def browse_oda(self):
         p, _ = QFileDialog.getOpenFileName(self, "ODAFileConverter.exe", self.oda.text(), "Programs (*.exe)")

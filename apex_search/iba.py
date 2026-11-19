@@ -301,7 +301,8 @@ def load_dat(path: str) -> Recording:
 
 
 # ------------------------------------------------------------------ iba .dat through iba's own ibaFilesLite (COM)
-DAT_COM_HELP = ("Your .dat files use iba's compressed format (PDA3). They can be read with iba's reader "
+DAT_COM_HELP = ("Your .dat files use iba's compressed format (PDA3). They are read through the installed ibaAnalyzer "
+                "(64-bit, v7.4 or newer). If that failed, check that ibaAnalyzer opens the file normally. Alternative: iba's reader "
                 "library ibaFilesLite.dll: if ibaAnalyzer or ibaDatCoordinator is installed, search your PC for "
                 "'ibaFilesLite.dll' (64-bit) and register it once as administrator:  regsvr32 \"<path>\\ibaFilesLite.dll\"  "
                 "— otherwise ask iba / your iba administrator for 'ibaFiles-Lite'.")
@@ -436,8 +437,172 @@ def load_dat_com(path: str) -> Recording:
     return Recording(path=path, t=t, signals=sigs, t_label="s", start=start, info=dat_header_info(path))
 
 
+# ------------------------------------------------------------------ iba .dat through the installed ibaAnalyzer (COM "IBA.Analyzer")
+class _AnalyzerServer:
+    """One dedicated thread owns the ibaAnalyzer COM object; every call is executed there (COM is thread-bound)."""
+
+    def __init__(self):
+        import queue
+        import threading
+        self.q = queue.Queue()
+        self.app = None
+        self.current = None
+        self.t = threading.Thread(target=self._run, daemon=True, name="ibaAnalyzer-COM")
+        self.t.start()
+
+    def _run(self):
+        with _Com():
+            while True:
+                fn, args, box, ev = self.q.get()
+                try:
+                    box["r"] = fn(self, *args)
+                except Exception as e:
+                    box["e"] = e
+                ev.set()
+
+    def call(self, fn, *args, timeout=600):
+        import threading
+        box, ev = {}, threading.Event()
+        self.q.put((fn, args, box, ev))
+        if not ev.wait(timeout):
+            raise TimeoutError("ibaAnalyzer did not answer")
+        if "e" in box:
+            raise box["e"]
+        return box["r"]
+
+    # ---- executed inside the COM thread
+    def ensure_app(self):
+        if self.app is None:
+            from win32com import client
+            self.app = client.dynamic.Dispatch("IBA.Analyzer")
+        return self.app
+
+    def open(self, path):
+        app = self.ensure_app()
+        path = os.path.abspath(path)
+        if self.current != path:
+            if self.current:
+                try:
+                    app.CloseDataFile(0)
+                except Exception:
+                    pass
+            app.OpenDataFile(0, path)
+            self.current = path
+        return app
+
+
+_SERVER = None
+
+
+def _server():
+    global _SERVER
+    if _SERVER is None:
+        _SERVER = _AnalyzerServer()
+    return _SERVER
+
+
+def _an_list(srv, path):
+    app = srv.open(path)
+    out = []
+    for kind, flt in (("analog", 1), ("digital", 2)):
+        try:
+            root = app.GetSignalTree(flt)
+        except Exception:
+            continue
+        stack, seen = [root], 0
+        while stack and seen < 200_000:
+            node = stack.pop()
+            seen += 1
+            cid = None
+            try:
+                cid = node.channelID
+            except Exception:
+                cid = None
+            if cid:
+                text = str(getattr(node, "Text", "") or cid)
+                name = text.split(": ", 1)[1] if ": " in text else text
+                out.append((str(cid), name.strip(), kind))
+                continue
+            try:
+                node.Expand()
+            except Exception:
+                pass
+            try:
+                child = node.GetFirstChildNode()
+            except Exception:
+                child = None
+            kids = []
+            while child is not None and len(kids) < 100_000:
+                kids.append(child)
+                try:
+                    child = child.GetSiblingNode()
+                except Exception:
+                    child = None
+            stack.extend(reversed(kids))
+    return out
+
+
+def _an_read(srv, path, cid):
+    app = srv.open(path)
+    r = app._oleobj_.InvokeTypes(82, 0, 1, (24, 0),
+                                 ((8, 0), (3, 0), (16389, 2), (16389, 2), (16396, 2)),
+                                 f"[{cid}]", 0, 0.0, 0.0, None)
+    tb = float(r[0] or 0)
+    xoff = float(r[1] or 0) if len(r) > 2 else 0.0
+    data = np.asarray(r[2] if len(r) > 2 else r[1], dtype=float).ravel()
+    return tb, xoff, data
+
+
+def load_dat_analyzer(path: str) -> Recording:
+    srv = _server()
+    chans = srv.call(_an_list, path)
+    if not chans:
+        raise ValueError("ibaAnalyzer opened the file but listed no signals.")
+    # time axis from the first analog signal
+    t, tb0 = None, 0.0
+    for cid, name, kind in chans:
+        if kind != "analog":
+            continue
+        tb0, xoff, data = srv.call(_an_read, path, cid)
+        if len(data) > 1:
+            t = xoff + np.arange(len(data)) * (tb0 if tb0 > 0 else 1.0)
+            break
+    if t is None:
+        raise ValueError("No analog data found in this file.")
+
+    def reader(cid):
+        tb, xoff, data = srv.call(_an_read, path, cid)
+        if len(data) == len(t) or tb <= 0:
+            return data[:len(t)] if len(data) >= len(t) else np.interp(t, np.linspace(t[0], t[-1], max(2, len(data))), data)
+        return np.interp(t, xoff + np.arange(len(data)) * tb, data)
+
+    sigs = [Signal(name + (" (digital)" if kind == "digital" else ""), "", loader=(lambda c=cid: reader(c)))
+            for cid, name, kind in chans]
+    start = None
+    try:
+        start = datetime.datetime.fromtimestamp(os.path.getmtime(path)) - datetime.timedelta(seconds=float(t[-1] - t[0]))
+    except Exception:
+        pass
+    return Recording(path=path, t=t, signals=sigs, t_label="s", start=start, info=dat_header_info(path))
+
+
+def analyzer_status() -> tuple[bool, str]:
+    try:
+        srv = _server()
+        v = srv.call(lambda s: str(s.ensure_app().GetVersion), timeout=60)
+        return True, f"ibaAnalyzer {v} — PDA3 .dat files supported"
+    except ImportError:
+        return False, "pywin32 not available"
+    except Exception as e:
+        return False, f"ibaAnalyzer COM not available ({str(e)[:120]})"
+
+
 def load_dat_any(path: str) -> Recording:
     errors = []
+    try:
+        return load_dat_analyzer(path)
+    except Exception as e:
+        errors.append(f"ibaAnalyzer: {type(e).__name__}: {str(e)[:200]}")
     try:
         return load_dat_com(path)
     except Exception as e:
