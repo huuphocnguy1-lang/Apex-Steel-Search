@@ -373,6 +373,8 @@ class IbaPage(Page):
         b1.clicked.connect(self.open_files)
         b2 = button("Load normal reference…", ghost=True, tip="Overlay a recording of normal operation in grey")
         b2.clicked.connect(self.open_ref)
+        b3 = button("🩺 Diagnose .dat…", ghost=True, tip="Test how ibaAnalyzer reads one .dat file and show a report")
+        b3.clicked.connect(self.diagnose)
         self.area = QComboBox()
         for k, l in specialist.AREAS:
             self.area.addItem(l, k)
@@ -380,6 +382,7 @@ class IbaPage(Page):
         self.info = sub("No recording loaded.")
         bar.addWidget(b1)
         bar.addWidget(b2)
+        bar.addWidget(b3)
         bar.addWidget(QLabel("Area:"))
         bar.addWidget(self.area)
         bar.addWidget(self.info, 1)
@@ -472,6 +475,31 @@ class IbaPage(Page):
         self.v.addWidget(sp, 1)
         self.recs, self.rec, self.ref = [], None, None
         self.on, self.events, self.window = [], [], None
+
+    # ---------------- diagnostic
+    def diagnose(self):
+        p, _ = QFileDialog.getOpenFileName(self, "Choose ONE .dat file to diagnose", "", "iba .dat (*.dat)")
+        if not p:
+            return
+        self.info.setText("Diagnosing with ibaAnalyzer… (can take up to a minute)")
+        self.ctx.runner.run(iba.diagnose_dat, (p,), self.on_diag, self.on_diag)
+
+    def on_diag(self, txt):
+        self.info.setText("Diagnostic finished.")
+        dlg = QDialog(self)
+        dlg.setWindowTitle("ibaAnalyzer diagnostic — send a screenshot of this")
+        dlg.resize(900, 600)
+        v = QVBoxLayout(dlg)
+        ed = QPlainTextEdit(str(txt))
+        ed.setReadOnly(True)
+        ed.setStyleSheet("font-family: Consolas, monospace; font-size: 9pt")
+        v.addWidget(ed)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        cp = bb.addButton("Copy", QDialogButtonBox.ButtonRole.ActionRole)
+        cp.clicked.connect(lambda: (ed.selectAll(), ed.copy()))
+        bb.rejected.connect(dlg.reject)
+        v.addWidget(bb)
+        dlg.exec()
 
     # ---------------- loading
     def on_link(self, url):

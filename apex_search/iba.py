@@ -501,45 +501,73 @@ def _server():
     return _SERVER
 
 
-def _an_list(srv, path):
-    app = srv.open(path)
-    out = []
-    for kind, flt in (("analog", 1), ("digital", 2)):
+def _an_walk(node, out, kind, depth=0):
+    """Same traversal as known working tools: recursive into children, iterative over siblings."""
+    guard = 0
+    while node is not None and guard < 200_000:
+        guard += 1
         try:
-            root = app.GetSignalTree(flt)
+            text = str(node.Text or "")
         except Exception:
-            continue
-        stack, seen = [root], 0
-        while stack and seen < 200_000:
-            node = stack.pop()
-            seen += 1
+            text = ""
+        try:
+            cid = node.channelID
+        except Exception:
             cid = None
-            try:
-                cid = node.channelID
-            except Exception:
-                cid = None
-            if cid:
-                text = str(getattr(node, "Text", "") or cid)
-                name = text.split(": ", 1)[1] if ": " in text else text
-                out.append((str(cid), name.strip(), kind))
-                continue
-            try:
-                node.Expand()
-            except Exception:
-                pass
+        if cid not in (None, ""):
+            name = text.split(": ", 1)[1] if ": " in text else (text or str(cid))
+            out.append((str(cid), name.strip(), kind))
+        try:
+            node.Expand()
+        except Exception:
+            pass
+        if depth < 30:
             try:
                 child = node.GetFirstChildNode()
             except Exception:
                 child = None
-            kids = []
-            while child is not None and len(kids) < 100_000:
-                kids.append(child)
+            if child is not None:
+                _an_walk(child, out, kind, depth + 1)
+        try:
+            node = node.GetSiblingNode()
+        except Exception:
+            node = None
+
+
+def _an_list(srv, path):
+    import time
+    app = srv.open(path)
+    for attempt in range(4):
+        out = []
+        for kind, flt in (("analog", 1), ("digital", 2)):
+            try:
+                tree = app.GetSignalTree(flt)
                 try:
-                    child = child.GetSiblingNode()
+                    root = tree.GetRootNode()
                 except Exception:
-                    child = None
-            stack.extend(reversed(kids))
-    return out
+                    root = tree
+                _an_walk(root, out, kind)
+            except Exception:
+                continue
+        if not out:   # some versions: only the combined tree
+            try:
+                tree = app.GetSignalTree(3)
+                try:
+                    root = tree.GetRootNode()
+                except Exception:
+                    root = tree
+                _an_walk(root, out, "analog")
+            except Exception:
+                pass
+        if out:
+            seen, uniq = set(), []
+            for c in out:
+                if c[0] not in seen:
+                    seen.add(c[0])
+                    uniq.append(c)
+            return uniq
+        time.sleep(2.0 + attempt * 2)   # big files may still be loading in ibaAnalyzer
+    return []
 
 
 def _an_read(srv, path, cid):
@@ -584,6 +612,106 @@ def load_dat_analyzer(path: str) -> Recording:
     except Exception:
         pass
     return Recording(path=path, t=t, signals=sigs, t_label="s", start=start, info=dat_header_info(path))
+
+
+def _an_diagnose(srv, path):
+    import time
+    rep = []
+    try:
+        app = srv.ensure_app()
+        rep.append(f"ibaAnalyzer version: {getattr(app, 'GetVersion', '?')}")
+    except Exception as e:
+        return f"Cannot start ibaAnalyzer: {e}"
+    t0 = time.time()
+    try:
+        srv.current = None
+        srv.open(path)
+        rep.append(f"OpenDataFile OK ({time.time() - t0:.1f} s)")
+    except Exception as e:
+        rep.append(f"OpenDataFile FAILED: {e}")
+        return "\n".join(rep)
+    time.sleep(2)
+
+    def desc(n, label):
+        parts = []
+        for attr in ("Text", "channelID", "ChannelID", "Name", "ID"):
+            try:
+                parts.append(f"{attr}={getattr(n, attr)!r}")
+            except Exception as e:
+                parts.append(f"{attr}=<{type(e).__name__}>")
+        return f"{label}: " + ", ".join(parts)
+
+    for flt in (3, 1, 2, 0):
+        try:
+            tree = app.GetSignalTree(flt)
+            rep.append(f"GetSignalTree({flt}) -> {type(tree).__name__} {str(tree)[:60]}")
+        except Exception as e:
+            rep.append(f"GetSignalTree({flt}) FAILED: {e}")
+            continue
+        root = None
+        for meth in ("GetRootNode", "RootNode", "Root"):
+            try:
+                r = getattr(tree, meth)
+                root = r() if callable(r) else r
+                rep.append(f"  tree.{meth} OK")
+                break
+            except Exception as e:
+                rep.append(f"  tree.{meth} FAILED: {type(e).__name__}: {str(e)[:80]}")
+        if root is None:
+            root = tree
+        rep.append("  " + desc(root, "root"))
+        for step in ("Expand",):
+            try:
+                getattr(root, step)()
+                rep.append("  root.Expand OK")
+            except Exception as e:
+                rep.append(f"  root.Expand FAILED: {str(e)[:80]}")
+        try:
+            child = root.GetFirstChildNode()
+            rep.append(f"  root.GetFirstChildNode -> {'None' if child is None else 'node'}")
+        except Exception as e:
+            child = None
+            rep.append(f"  root.GetFirstChildNode FAILED: {str(e)[:80]}")
+        n = 0
+        while child is not None and n < 6:
+            rep.append("    " + desc(child, f"child {n}"))
+            try:
+                child.Expand()
+            except Exception:
+                pass
+            try:
+                g = child.GetFirstChildNode()
+                m = 0
+                while g is not None and m < 3:
+                    rep.append("      " + desc(g, f"grandchild {m}"))
+                    g = g.GetSiblingNode()
+                    m += 1
+            except Exception as e:
+                rep.append(f"      grandchildren FAILED: {str(e)[:80]}")
+            try:
+                child = child.GetSiblingNode()
+            except Exception as e:
+                rep.append(f"    GetSiblingNode FAILED: {str(e)[:80]}")
+                child = None
+            n += 1
+        if flt == 3:
+            break
+    for expr in ("[0:0]", "[0:1]", "[0.0]", "[1:0]"):
+        try:
+            r = app._oleobj_.InvokeTypes(82, 0, 1, (24, 0), ((8, 0), (3, 0), (16389, 2), (16389, 2), (16396, 2)),
+                                         expr, 0, 0.0, 0.0, None)
+            data = r[2] if len(r) > 2 else r[1]
+            rep.append(f"read {expr}: timebase={r[0]!r} xoffset={r[1]!r} samples={len(data) if data is not None else None}")
+        except Exception as e:
+            rep.append(f"read {expr} FAILED: {str(e)[:100]}")
+    return "\n".join(rep)
+
+
+def diagnose_dat(path: str) -> str:
+    try:
+        return _server().call(_an_diagnose, path, timeout=300)
+    except Exception as e:
+        return f"Diagnostic failed: {type(e).__name__}: {e}"
 
 
 def analyzer_status() -> tuple[bool, str]:
