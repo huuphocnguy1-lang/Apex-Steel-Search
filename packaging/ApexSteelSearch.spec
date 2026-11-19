@@ -19,9 +19,16 @@ for pkg in ("rapidocr_onnxruntime", "extract_msg", "RTFDE"):
     except Exception:
         pass
 
-try:  # iba .dat reader: make sure every submodule and its metadata are bundled
+try:  # iba .dat reader: bundle it under whatever import name the package really uses
+    import sys as _sys
     from PyInstaller.utils.hooks import collect_submodules, copy_metadata
-    hiddenimports += collect_submodules("iba_py")
+    _sys.path.insert(0, ROOT)
+    from apex_search.iba import _dist_top_levels
+    _tops = _dist_top_levels("iba-py")
+    print("iba-py top-level modules:", _tops)
+    for _t in _tops:
+        hiddenimports.append(_t)
+        hiddenimports += collect_submodules(_t)
     datas += copy_metadata("iba-py")
 except Exception as e:
     print("WARNING: iba-py not bundled:", e)

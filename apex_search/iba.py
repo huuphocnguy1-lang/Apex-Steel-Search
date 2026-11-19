@@ -193,26 +193,79 @@ def _from_decoded(path, begin, interval, data) -> Recording:
                      start=_as_datetime(begin))
 
 
+def _dist_top_levels(dist_name: str = "iba-py") -> list[str]:
+    """Top-level module names installed by a distribution (its import name may differ from 'iba_py')."""
+    from importlib.metadata import distribution
+    d = distribution(dist_name)
+    names = (d.read_text("top_level.txt") or "").split()
+    for f in d.files or []:
+        f = str(f).replace("\\", "/")
+        if f.endswith(".py") and "/" not in f:
+            names.append(f[:-3])
+        elif f.endswith("/__init__.py") and f.count("/") == 1:
+            names.append(f.split("/")[0])
+    return [n for n in dict.fromkeys(names) if n and not n.endswith(".dist-info")]
+
+
+_DEC = None
+
+
+def _find_dec():
+    """Finds the decoder function dec() of iba-py, whatever the package's import name is."""
+    global _DEC
+    if _DEC:
+        return _DEC
+    import importlib
+    errors, names = [], []
+    try:
+        names += _dist_top_levels()
+    except Exception as e:
+        errors.append(f"package metadata: {type(e).__name__}: {e}")
+    names += ["iba_py", "iba_py.iba", "iba_py.core", "iba"]
+    for n in dict.fromkeys(names):
+        if n.split(".")[0] in ("apex_search",):
+            continue
+        try:
+            m = importlib.import_module(n)
+        except Exception as e:
+            errors.append(f"{n}: {type(e).__name__}: {e}")
+            continue
+        f = getattr(m, "dec", None)
+        if callable(f):
+            _DEC = (f, n)
+            return _DEC
+        for sub in ("iba", "core", "dat", "main", "__main__"):
+            try:
+                sm = importlib.import_module(f"{n}.{sub}")
+                f = getattr(sm, "dec", None)
+                if callable(f):
+                    _DEC = (f, f"{n}.{sub}")
+                    return _DEC
+            except Exception:
+                pass
+        errors.append(f"{n}: imported but has no dec()")
+    raise ImportError(" | ".join(errors) or "iba-py not found")
+
+
 def dat_reader_status() -> tuple[bool, str]:
     """(ok, text) — shown in Settings so a missing or broken .dat reader is easy to diagnose."""
-    try:
-        import iba_py  # noqa: F401
-        from iba_py import dec  # noqa: F401
-    except Exception as e:
-        return False, f"not available — {type(e).__name__}: {e}"
     try:
         from importlib.metadata import version
         v = version("iba-py")
     except Exception:
-        v = "?"
-    return True, f"iba-py {v} installed"
+        v = None
+    try:
+        _, mod = _find_dec()
+    except Exception as e:
+        return False, (f"iba-py {v} installed but not usable — " if v else "iba-py not installed — ") + str(e)[:300]
+    return True, f"iba-py {v or '?'} ready (module '{mod}')"
 
 
 def load_dat(path: str) -> Recording:
     try:
-        from iba_py import dec
+        dec, _ = _find_dec()
     except Exception as e:
-        raise ValueError(f"The .dat reader (iba-py) could not be loaded ({type(e).__name__}: {e}). " + DAT_HELP) from None
+        raise ValueError(f"The .dat reader (iba-py) could not be loaded ({str(e)[:300]}). " + DAT_HELP) from None
     try:
         begin, interval, data = dec(path)
     except Exception as e:
