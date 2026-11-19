@@ -11,3 +11,4 @@ rapidocr-onnxruntime>=1.3.20  # OCR offline (Chinese + English/Latin)
 numpy>=1.26,<2.0
 Pillow>=10.0
 pillow-heif>=0.16          # iPhone/Android HEIC photos
+iba-py>=0.1.0
