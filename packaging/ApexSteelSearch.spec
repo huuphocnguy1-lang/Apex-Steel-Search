@@ -7,7 +7,7 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 datas = [(os.path.join(ROOT, "assets"), "assets")]
 binaries = []
-hiddenimports = ["apex_search.gui.main_window", "fitz", "pymupdf", "pillow_heif", "extract_msg",
+hiddenimports = ["apex_search.gui.main_window", "fitz", "pymupdf", "pillow_heif", "extract_msg", "iba_py",
                  "watchdog.observers", "watchdog.observers.read_directory_changes"]
 
 for pkg in ("rapidocr_onnxruntime", "extract_msg", "RTFDE"):
@@ -18,6 +18,13 @@ for pkg in ("rapidocr_onnxruntime", "extract_msg", "RTFDE"):
         hiddenimports += h
     except Exception:
         pass
+
+try:  # iba .dat reader: make sure every submodule and its metadata are bundled
+    from PyInstaller.utils.hooks import collect_submodules, copy_metadata
+    hiddenimports += collect_submodules("iba_py")
+    datas += copy_metadata("iba-py")
+except Exception as e:
+    print("WARNING: iba-py not bundled:", e)
 
 for pkg in ("ezdxf", "pptx", "docx"):
     try:

@@ -193,11 +193,26 @@ def _from_decoded(path, begin, interval, data) -> Recording:
                      start=_as_datetime(begin))
 
 
+def dat_reader_status() -> tuple[bool, str]:
+    """(ok, text) — shown in Settings so a missing or broken .dat reader is easy to diagnose."""
+    try:
+        import iba_py  # noqa: F401
+        from iba_py import dec  # noqa: F401
+    except Exception as e:
+        return False, f"not available — {type(e).__name__}: {e}"
+    try:
+        from importlib.metadata import version
+        v = version("iba-py")
+    except Exception:
+        v = "?"
+    return True, f"iba-py {v} installed"
+
+
 def load_dat(path: str) -> Recording:
     try:
         from iba_py import dec
-    except ImportError:
-        raise ValueError("The .dat reader (iba-py) is not installed. " + DAT_HELP) from None
+    except Exception as e:
+        raise ValueError(f"The .dat reader (iba-py) could not be loaded ({type(e).__name__}: {e}). " + DAT_HELP) from None
     try:
         begin, interval, data = dec(path)
     except Exception as e:

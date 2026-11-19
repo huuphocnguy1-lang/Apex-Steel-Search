@@ -1083,6 +1083,10 @@ class SettingsPage(Page):
         form.addRow("ODA File Converter (DWG)", oda_row)
         form.addRow("Project code pattern", self.preg)
         form.addRow("Skip folders named", self.excl)
+        section("Components")
+        from .. import iba as _iba
+        ok, txt = _iba.dat_reader_status()
+        form.addRow("iba .dat reader", QLabel(("✔ " if ok else "✘ ") + txt))
         row = QHBoxLayout()
         save = button("Save settings")
         save.clicked.connect(self.save)
