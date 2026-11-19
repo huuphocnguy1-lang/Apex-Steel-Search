@@ -7,11 +7,25 @@ from dataclasses import dataclass, field
 import numpy as np
 
 
-@dataclass
 class Signal:
-    name: str
-    unit: str
-    v: np.ndarray
+    """A signal; its values can be loaded lazily (big iba files: only the signals you tick are read)."""
+
+    def __init__(self, name: str, unit: str, v=None, loader=None):
+        self.name, self.unit, self._v, self.loader = name, unit, v, loader
+
+    @property
+    def v(self) -> np.ndarray:
+        if self._v is None:
+            self._v = np.asarray(self.loader(), dtype=float) if self.loader else np.zeros(0)
+        return self._v
+
+    @v.setter
+    def v(self, value):
+        self._v = value
+
+    @property
+    def loaded(self) -> bool:
+        return self._v is not None
 
 
 @dataclass
@@ -21,6 +35,7 @@ class Recording:
     signals: list = field(default_factory=list)
     t_label: str = "s"
     start: datetime.datetime | None = None
+    info: dict = field(default_factory=dict)
 
     @property
     def name(self):
@@ -247,6 +262,18 @@ def _find_dec():
     raise ImportError(" | ".join(errors) or "iba-py not found")
 
 
+def com_reader_status() -> tuple[bool, str]:
+    try:
+        from win32com import client
+        with _Com():
+            client.dynamic.Dispatch("IbaFilesLite.IbaFile")
+        return True, "ibaFilesLite (iba official reader) ready — PDA3 files supported"
+    except ImportError:
+        return False, "pywin32 not available"
+    except Exception as e:
+        return False, f"ibaFilesLite.dll not registered ({str(e)[:100]})"
+
+
 def dat_reader_status() -> tuple[bool, str]:
     """(ok, text) — shown in Settings so a missing or broken .dat reader is easy to diagnose."""
     try:
@@ -273,9 +300,162 @@ def load_dat(path: str) -> Recording:
     return _from_decoded(path, begin, interval, data)
 
 
+# ------------------------------------------------------------------ iba .dat through iba's own ibaFilesLite (COM)
+DAT_COM_HELP = ("Your .dat files use iba's compressed format (PDA3). They can be read with iba's reader "
+                "library ibaFilesLite.dll: if ibaAnalyzer or ibaDatCoordinator is installed, search your PC for "
+                "'ibaFilesLite.dll' (64-bit) and register it once as administrator:  regsvr32 \"<path>\\ibaFilesLite.dll\"  "
+                "— otherwise ask iba / your iba administrator for 'ibaFiles-Lite'.")
+
+
+def dat_header_info(path: str) -> dict:
+    """Readable fields in the iba file header, e.g. ME / HEAT / SEQ / SG / widths / temperatures (ESP coil info)."""
+    try:
+        head = open(path, "rb").read(8192).decode("latin-1")
+    except OSError:
+        return {}
+    info = {}
+    m = re.search(r"[A-Z][A-Za-z]{1,11}:[^\x00]{4,1500}?(?=\x00)", head)
+    if m and "/" in m.group(0):
+        for k, val in re.findall(r"/?([A-Za-z][A-Za-z0-9]{1,15}):([^/\x00]*)", m.group(0)):
+            if val.strip():
+                info[k] = val.strip()
+    return info
+
+
+class _Com:
+    def __enter__(self):
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+        except Exception:
+            pass
+        return self
+
+    def __exit__(self, *a):
+        try:
+            import pythoncom
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
+        return False
+
+
+def _com_reader(path, preload=False):
+    from win32com import client
+    r = client.dynamic.Dispatch("IbaFilesLite.IbaFile")
+    try:
+        r.PreLoad = 1 if preload else 0
+        r.RawMode = 0
+    except Exception:
+        pass
+    r.Open(path)
+    return r
+
+
+def _com_channels(r):
+    en = r.EnumChannels()
+    while not en.IsAtEnd():
+        yield en.Next()
+
+
+def _q(obj, key, default=""):
+    try:
+        v = obj.QueryInfoByName(key)
+        return default if v is None else v
+    except Exception:
+        return default
+
+
+def _com_read(path: str, name: str, t_target: np.ndarray):
+    from win32com import client
+    import pythoncom
+    with _Com():
+        r = _com_reader(path)
+        try:
+            for ch in _com_channels(r):
+                if str(_q(ch, "name")) != name:
+                    continue
+                var = client.VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, 2)
+                if ch.IsDefaultTimebased():
+                    res = ch.QueryTimebasedData(0, 0, var)
+                else:
+                    res = ch.QueryLengthbasedData(0, 0, var)
+                tb, xoff, data = (res[0], res[1], res[2]) if isinstance(res, tuple) and len(res) >= 3 else (None, 0, res)
+                v = np.asarray(data, dtype=float).ravel()
+                try:
+                    tb = float(tb)
+                except (TypeError, ValueError):
+                    tb = 0.0
+                if len(v) == len(t_target) or tb <= 0:
+                    return v[:len(t_target)] if len(v) >= len(t_target) else np.interp(
+                        t_target, np.linspace(t_target[0], t_target[-1], len(v)), v)
+                tc = float(xoff or 0) + np.arange(len(v)) * tb
+                return np.interp(t_target, tc, v)
+        finally:
+            try:
+                r.Close()
+            except Exception:
+                pass
+    raise ValueError(f"Signal {name} not found")
+
+
+def load_dat_com(path: str) -> Recording:
+    """Opens the file with iba's ibaFilesLite and lists the signals; values are read when a signal is ticked."""
+    with _Com():
+        r = _com_reader(path)
+        try:
+            clk = float(_q(r, "clk", 0) or 0)
+            frames = int(float(_q(r, "frames", 0) or 0))
+            st = str(_q(r, "starttime", ""))
+            chans = []
+            for ch in _com_channels(r):
+                nm = str(_q(ch, "name")).strip()
+                if not nm:
+                    continue
+                chans.append((nm, str(_q(ch, "unit")).strip(), str(_q(ch, "digchannel", "0")) in ("1", "True", "true")))
+        finally:
+            try:
+                r.Close()
+            except Exception:
+                pass
+    if not chans:
+        raise ValueError("No signals found in this .dat file.")
+    if clk <= 0 or frames <= 0:
+        raise ValueError("The .dat file has no time base information.")
+    t = np.arange(frames) * clk
+    start = None
+    for fmt in ("%d.%m.%Y %H:%M:%S.%f", "%d.%m.%Y %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            start = datetime.datetime.strptime(st, fmt)
+            break
+        except ValueError:
+            continue
+    chans.sort(key=lambda c: c[2])           # analog first, digital after
+    sigs = [Signal(nm + (" (digital)" if dig else ""), unit,
+                   loader=(lambda n=nm: _com_read(path, n, t))) for nm, unit, dig in chans]
+    return Recording(path=path, t=t, signals=sigs, t_label="s", start=start, info=dat_header_info(path))
+
+
+def load_dat_any(path: str) -> Recording:
+    errors = []
+    try:
+        return load_dat_com(path)
+    except Exception as e:
+        errors.append(f"iba reader: {type(e).__name__}: {str(e)[:200]}")
+    try:
+        rec = load_dat(path)
+        rec.info = dat_header_info(path)
+        return rec
+    except Exception as e:
+        errors.append(str(e)[:200])
+    head = open(path, "rb").read(4)
+    hint = DAT_COM_HELP if head == b"PDA3" else DAT_HELP
+    raise ValueError(hint + "\n\nDetails: " + " | ".join(errors))
+
+
 def load(path: str) -> Recording:
     if os.path.splitext(path)[1].lower() == ".dat":
-        return load_dat(path)
+        return load_dat_any(path)
     return load_csv(path)
 
 
@@ -291,35 +471,31 @@ def load_many(paths: list[str]) -> dict:
     return {"recs": recs, "errors": errors}
 
 
-def join(recs: list[Recording]) -> Recording:
-    """Joins consecutive recordings (same signals) into one long recording in time order."""
+def join(recs: list[Recording], only: list[str] | None = None) -> Recording:
+    """Joins consecutive recordings (same signals) into one long recording in time order (values loaded lazily)."""
     if len(recs) == 1:
         return recs[0]
     recs = sorted(recs, key=lambda r: (r.start or datetime.datetime.min, r.name))
-    names = [s.name for s in recs[0].signals if all(any(x.name == s.name for x in r.signals) for r in recs[1:])]
-    t_parts, v_parts = [], {n: [] for n in names}
-    offset = 0.0
-    t0 = recs[0].start
+    names = [s.name for s in recs[0].signals if (only is None or s.name in only)
+             and all(any(x.name == s.name for x in r.signals) for r in recs[1:])]
+    t_parts, offset, t0 = [], 0.0, recs[0].start
     for r in recs:
-        if t0 and r.start:
-            off = (r.start - t0).total_seconds()
-        else:
-            off = offset
+        off = (r.start - t0).total_seconds() if (t0 and r.start) else offset
         tt = r.t - r.t[0] + off
         t_parts.append(tt)
-        for n in names:
-            v_parts[n].append(next(s for s in r.signals if s.name == n).v)
         step = float(np.median(np.diff(r.t))) if len(r.t) > 1 else 1.0
         offset = tt[-1] + step
     t = np.concatenate(t_parts)
     order = np.argsort(t, kind="stable")
-    sigs = []
-    for n in names:
-        unit = next(s.unit for s in recs[0].signals if s.name == n)
-        sigs.append(Signal(n, unit, np.concatenate(v_parts[n])[order]))
+
+    def loader(n):
+        return np.concatenate([next(s for s in r.signals if s.name == n).v for r in recs])[order]
+
+    sigs = [Signal(n, next(s.unit for s in recs[0].signals if s.name == n), loader=(lambda n=n: loader(n)))
+            for n in names]
     label = f"s from {t0:%Y-%m-%d %H:%M:%S}" if t0 else "s"
     return Recording(path=f"{len(recs)} files joined ({recs[0].name} … {recs[-1].name})", t=t[order], signals=sigs,
-                     t_label=label, start=t0)
+                     t_label=label, start=t0, info=recs[0].info)
 
 
 def scan_files(recs: list[Recording], names: list[str] | None = None) -> list[dict]:
@@ -401,6 +577,8 @@ def events_text(rec: Recording, events: list, selected=None) -> str:
     sigs = [s for k, s in enumerate(rec.signals) if selected is None or k in selected]
     lines = [f"Recording {rec.name}: {len(rec.signals)} signals, {len(rec.t)} samples, "
              f"{rec.t[0]:.2f} to {rec.t[-1]:.2f} {rec.t_label}."]
+    if rec.info:
+        lines.append("File information: " + ", ".join(f"{k}={v}" for k, v in list(rec.info.items())[:25]))
     lines.append("Signals (min / mean / max):")
     for s in sigs[:40]:
         lines.append(f"- {s.name} [{s.unit}]: {s.v.min():.3g} / {s.v.mean():.3g} / {s.v.max():.3g}")

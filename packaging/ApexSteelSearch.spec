@@ -8,7 +8,8 @@ ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 datas = [(os.path.join(ROOT, "assets"), "assets")]
 binaries = []
 hiddenimports = ["apex_search.gui.main_window", "fitz", "pymupdf", "pillow_heif", "extract_msg", "iba_py",
-                 "watchdog.observers", "watchdog.observers.read_directory_changes"]
+                 "watchdog.observers", "watchdog.observers.read_directory_changes",
+                 "win32com", "win32com.client", "win32com.client.dynamic", "pythoncom", "pywintypes"]
 
 for pkg in ("rapidocr_onnxruntime", "extract_msg", "RTFDE"):
     try:

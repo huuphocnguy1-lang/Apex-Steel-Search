@@ -1085,8 +1085,16 @@ class SettingsPage(Page):
         form.addRow("Skip folders named", self.excl)
         section("Components")
         from .. import iba as _iba
+        ok, txt = _iba.com_reader_status()
+        lb = QLabel(("✔ " if ok else "✘ ") + txt)
+        lb.setWordWrap(True)
+        form.addRow("iba official reader", lb)
         ok, txt = _iba.dat_reader_status()
-        form.addRow("iba .dat reader", QLabel(("✔ " if ok else "✘ ") + txt))
+        lb2 = QLabel(("✔ " if ok else "✘ ") + txt)
+        lb2.setWordWrap(True)
+        form.addRow("open-source .dat reader", lb2)
+        form.addRow("", sub("Your PDA3 .dat files need the iba official reader (ibaFilesLite.dll). Search your PC for "
+                            "ibaFilesLite.dll and register it as administrator:  regsvr32 \"…\\ibaFilesLite.dll\""))
         row = QHBoxLayout()
         save = button("Save settings")
         save.clicked.connect(self.save)

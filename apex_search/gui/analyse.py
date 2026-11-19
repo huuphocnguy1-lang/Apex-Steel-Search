@@ -530,7 +530,8 @@ class IbaPage(Page):
         changed = self.rec is None or [s.name for s in rec.signals] != [s.name for s in self.rec.signals]
         self.rec = rec
         if new_signals or changed or len(self.on) != len(rec.signals):
-            self.on = [k < 8 for k in range(len(rec.signals))]
+            lazy = any(not s.loaded for s in rec.signals)
+            self.on = [k < (4 if lazy else 8) for k in range(len(rec.signals))]
             self.sigs.blockSignals(True)
             self.sigs.clear()
             for k, s in enumerate(rec.signals):
@@ -541,9 +542,13 @@ class IbaPage(Page):
                 self.sigs.addItem(it)
             self.sigs.blockSignals(False)
             reset = True
+        keys = ("ME", "HEAT", "SEQ", "SG", "FMxW", "FMxThick", "FMxTemp")
+        extra = "  ·  ".join(f"{k} {rec.info[k]}" for k in keys if k in rec.info)
         self.info.setText(f"{rec.name} · {len(rec.signals)} signals · {len(rec.t):,} samples · "
                           f"{rec.t[0]:.4g} → {rec.t[-1]:.4g} {rec.t_label}"
-                          + (f" · {len(self.recs)} files loaded" if len(self.recs) > 1 else ""))
+                          + (f" · {len(self.recs)} files loaded" if len(self.recs) > 1 else "")
+                          + (f"\n{extra}" if extra else ""))
+        self.info.setToolTip("\n".join(f"{k}: {v}" for k, v in rec.info.items()))
         self.recompute(reset=reset)
 
     def overlays(self):
@@ -577,8 +582,16 @@ class IbaPage(Page):
             it.setHidden(text.lower() not in it.text().lower())
 
     def on_sig_toggle(self, it):
-        self.on[it.data(Qt.ItemDataRole.UserRole)] = it.checkState() == Qt.CheckState.Checked
-        self.recompute()
+        k = it.data(Qt.ItemDataRole.UserRole)
+        self.on[k] = it.checkState() == Qt.CheckState.Checked
+        if self.on[k] and self.rec and not self.rec.signals[k].loaded:
+            self.ctx.set_status(f"Reading {self.rec.signals[k].name}…")
+        try:
+            self.recompute()
+        except Exception as e:
+            self.on[k] = False
+            it.setCheckState(Qt.CheckState.Unchecked)
+            QMessageBox.warning(self, "iba", f"Cannot read this signal:\n{e}")
 
     def on_window(self, a, b):
         full = self.rec and abs(a - self.rec.t[0]) < 1e-9 and abs(b - self.rec.t[-1]) < 1e-9
