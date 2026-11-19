@@ -1,4 +1,4 @@
 """Apex Steel Analyser (formerly Apex Steel Search) — offline document search and AI assistant for steel site work."""
 
-__version__ = "0.3.7"
+__version__ = "0.3.8"
 APP_NAME = "Apex Steel Analyser"

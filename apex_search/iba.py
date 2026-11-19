@@ -477,18 +477,49 @@ class _AnalyzerServer:
             self.app = client.dynamic.Dispatch("IBA.Analyzer")
         return self.app
 
-    def open(self, path):
+    def open(self, path, log=None):
+        """Opens a file in ibaAnalyzer. Always closes the previous file first; if the path is refused
+        (special characters, long or network path), retries with a temporary copy under a simple name."""
+        import shutil
+        import tempfile
         app = self.ensure_app()
         path = os.path.abspath(path)
-        if self.current != path:
-            if self.current:
-                try:
-                    app.CloseDataFile(0)
-                except Exception:
-                    pass
+        if self.current == path:
+            return app
+        try:
+            app.CloseDataFile(0)
+        except Exception:
+            pass
+        self.current = None
+        try:
             app.OpenDataFile(0, path)
             self.current = path
-        return app
+            if log is not None:
+                log.append("OpenDataFile OK with the original path")
+            return app
+        except Exception as e1:
+            if log is not None:
+                log.append(f"OpenDataFile with original path FAILED: {e1}")
+            tmp = os.path.join(tempfile.gettempdir(), "apex_iba")
+            os.makedirs(tmp, exist_ok=True)
+            for f in os.listdir(tmp):
+                try:
+                    os.remove(os.path.join(tmp, f))
+                except OSError:
+                    pass
+            copy = os.path.join(tmp, "recording.dat")
+            shutil.copy2(path, copy)
+            try:
+                app.OpenDataFile(0, copy)
+            except Exception as e2:
+                if log is not None:
+                    log.append(f"OpenDataFile with temporary copy {copy} FAILED: {e2}")
+                raise RuntimeError(f"ibaAnalyzer cannot open this file ({e1}). Is it open in another program, "
+                                   f"or damaged? Try opening it in ibaAnalyzer.") from None
+            if log is not None:
+                log.append(f"OpenDataFile OK with temporary copy {copy}")
+            self.current = path
+            return app
 
 
 _SERVER = None
@@ -622,13 +653,17 @@ def _an_diagnose(srv, path):
         rep.append(f"ibaAnalyzer version: {getattr(app, 'GetVersion', '?')}")
     except Exception as e:
         return f"Cannot start ibaAnalyzer: {e}"
+    rep.append(f"File: {path}  ({os.path.getsize(path) / 1e6:.1f} MB, exists={os.path.exists(path)})")
     t0 = time.time()
     try:
         srv.current = None
-        srv.open(path)
-        rep.append(f"OpenDataFile OK ({time.time() - t0:.1f} s)")
+        log = []
+        srv.open(path, log)
+        rep += log
+        rep.append(f"Open finished in {time.time() - t0:.1f} s")
     except Exception as e:
-        rep.append(f"OpenDataFile FAILED: {e}")
+        rep += log
+        rep.append(f"OPEN FAILED: {e}")
         return "\n".join(rep)
     time.sleep(2)
 
