@@ -476,11 +476,24 @@ class IbaPage(Page):
         self.recs, self.rec, self.ref = [], None, None
         self.on, self.events, self.window = [], [], None
 
+    # ---------------- folders
+    def last_dir(self):
+        d = self.ctx.cfg.get("iba_last_dir", "")
+        return d if d and os.path.isdir(d) else os.path.expanduser("~")
+
+    def remember_dir(self, path):
+        try:
+            self.ctx.cfg["iba_last_dir"] = os.path.dirname(path)
+            self.ctx.cfg.save()
+        except Exception:
+            pass
+
     # ---------------- diagnostic
     def diagnose(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Choose ONE .dat file to diagnose", "", "iba .dat (*.dat)")
+        p, _ = QFileDialog.getOpenFileName(self, "Choose ONE .dat file to diagnose", self.last_dir(), "iba .dat (*.dat)")
         if not p:
             return
+        self.remember_dir(p)
         self.info.setText("Diagnosing with ibaAnalyzer… (can take up to a minute)")
         self.ctx.runner.run(iba.diagnose_dat, (p,), self.on_diag, self.on_diag)
 
@@ -508,10 +521,12 @@ class IbaPage(Page):
             self.ctx.show_file(int(s[4:]))
 
     def open_files(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open iba recordings (Ctrl/Shift for several)", "",
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open iba recordings (Ctrl/Shift for several)", self.last_dir(),
                                                 "iba recordings (*.dat *.csv *.txt);;All files (*.*)")
+        paths = [p for p in paths if not os.path.basename(p).lower().startswith("unins")]
         if not paths:
             return
+        self.remember_dir(paths[0])
         self.info.setText(f"Loading {len(paths)} file(s)…")
         self.ctx.runner.run(iba.load_many, (paths,), self.on_loaded, self.on_load_error)
 
@@ -593,10 +608,11 @@ class IbaPage(Page):
         return refs
 
     def open_ref(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Normal reference (same signals)", "",
+        p, _ = QFileDialog.getOpenFileName(self, "Normal reference (same signals)", self.last_dir(),
                                            "iba recordings (*.dat *.csv *.txt);;All files (*.*)")
         if not p:
             return
+        self.remember_dir(p)
         try:
             self.ref = iba.load(p)
         except Exception as e:

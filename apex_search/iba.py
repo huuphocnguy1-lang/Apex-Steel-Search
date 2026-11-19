@@ -546,8 +546,11 @@ def _an_walk(node, out, kind, depth=0):
         except Exception:
             cid = None
         if cid not in (None, ""):
-            name = text.split(": ", 1)[1] if ": " in text else (text or str(cid))
-            out.append((str(cid), name.strip(), kind))
+            cid = str(cid).strip()
+            name = text.split(": ", 1)[1] if ": " in text else (text or cid)
+            core = cid.strip("[]")
+            k = "digital" if ("." in core and ":" not in core) else ("analog" if ":" in core else kind)
+            out.append((cid, name.strip(), k))
         try:
             node.Expand()
         except Exception:
@@ -601,14 +604,22 @@ def _an_list(srv, path):
     return []
 
 
+def _expr(cid: str) -> str:
+    cid = str(cid).strip()
+    return cid if cid.startswith("[") else f"[{cid}]"
+
+
 def _an_read(srv, path, cid):
     app = srv.open(path)
     r = app._oleobj_.InvokeTypes(82, 0, 1, (24, 0),
                                  ((8, 0), (3, 0), (16389, 2), (16389, 2), (16396, 2)),
-                                 f"[{cid}]", 0, 0.0, 0.0, None)
+                                 _expr(cid), 0, 0.0, 0.0, None)
     tb = float(r[0] or 0)
     xoff = float(r[1] or 0) if len(r) > 2 else 0.0
-    data = np.asarray(r[2] if len(r) > 2 else r[1], dtype=float).ravel()
+    raw = r[2] if len(r) > 2 else r[1]
+    if raw is None:
+        return tb, xoff, np.zeros(0)
+    data = np.asarray(raw, dtype=float).ravel()
     return tb, xoff, data
 
 
@@ -618,24 +629,34 @@ def load_dat_analyzer(path: str) -> Recording:
     if not chans:
         raise ValueError("ibaAnalyzer opened the file but listed no signals.")
     # time axis from the first analog signal
-    t, tb0 = None, 0.0
-    for cid, name, kind in chans:
-        if kind != "analog":
-            continue
-        tb0, xoff, data = srv.call(_an_read, path, cid)
-        if len(data) > 1:
-            t = xoff + np.arange(len(data)) * (tb0 if tb0 > 0 else 1.0)
+    t, best, tried = None, None, 0
+    ordered = [c for c in chans if c[2] == "analog"] + [c for c in chans if c[2] != "analog"]
+    for cid, name, kind in ordered:
+        if tried >= 6 and best is not None:
             break
-    if t is None:
-        raise ValueError("No analog data found in this file.")
-
-    def reader(cid):
+        tried += 1
         tb, xoff, data = srv.call(_an_read, path, cid)
-        if len(data) == len(t) or tb <= 0:
-            return data[:len(t)] if len(data) >= len(t) else np.interp(t, np.linspace(t[0], t[-1], max(2, len(data))), data)
-        return np.interp(t, xoff + np.arange(len(data)) * tb, data)
+        if len(data) > 1 and (best is None or (tb > 0 and tb < best[0])):
+            best = (tb if tb > 0 else 1.0, xoff, len(data))
+    if best is None:
+        raise ValueError("ibaAnalyzer listed the signals but returned no data.")
+    t = best[1] + np.arange(best[2]) * best[0]
 
-    sigs = [Signal(name + (" (digital)" if kind == "digital" else ""), "", loader=(lambda c=cid: reader(c)))
+    def reader(cid, digital=False):
+        tb, xoff, data = srv.call(_an_read, path, cid)
+        if len(data) == 0:
+            raise ValueError(f"no data returned for {cid}")
+        if len(data) == len(t):
+            return data
+        tc = xoff + np.arange(len(data)) * tb if tb > 0 else np.linspace(t[0], t[-1], max(2, len(data)))
+        if digital:   # keep steps: value of the last sample at or before each time
+            idx = np.clip(np.searchsorted(tc, t, side="right") - 1, 0, len(data) - 1)
+            return data[idx]
+        return np.interp(t, tc, data)
+
+    chans = [c for c in chans if c[2] == "analog"] + [c for c in chans if c[2] != "analog"]
+    sigs = [Signal(name + (" (digital)" if kind == "digital" else ""), "",
+                   loader=(lambda c=cid, d=(kind == "digital"): reader(c, d)))
             for cid, name, kind in chans]
     start = None
     try:
