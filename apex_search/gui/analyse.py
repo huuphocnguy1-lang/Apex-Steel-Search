@@ -70,6 +70,47 @@ def edit_case(parent, db, case=None, area="Caster", symptom="") -> bool:
     return False
 
 
+# ================================================================== casting temperature dialog
+class TempDialog(QDialog):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Casting temperatures")
+        f = QFormLayout(self)
+        self.comp = {}
+        defaults = {"C": 0.05, "Si": 0.02, "Mn": 0.25, "P": 0.012, "S": 0.008, "Al": 0.035, "Cu": 0.03, "Ni": 0.03, "Cr": 0.03}
+        for k, val in defaults.items():
+            sp = QDoubleSpinBox()
+            sp.setDecimals(3)
+            sp.setRange(0, 5)
+            sp.setSingleStep(0.01)
+            sp.setValue(val)
+            sp.valueChanged.connect(self.update_temp)
+            self.comp[k] = sp
+            f.addRow(f"% {k}", sp)
+        self.sh = QDoubleSpinBox()
+        self.sh.setRange(0, 80)
+        self.sh.setValue(25)
+        self.loss = QDoubleSpinBox()
+        self.loss.setRange(0, 120)
+        self.loss.setValue(38)
+        self.sh.valueChanged.connect(self.update_temp)
+        self.loss.valueChanged.connect(self.update_temp)
+        f.addRow("Superheat °C", self.sh)
+        f.addRow("Ladle losses °C", self.loss)
+        self.out = QLabel()
+        f.addRow(self.out)
+        f.addRow(sub("General empirical formula — your plant grade table always has priority."))
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        bb.rejected.connect(self.reject)
+        f.addRow(bb)
+        self.update_temp()
+
+    def update_temp(self, *_):
+        t = specialist.casting_temperatures({k: s.value() for k, s in self.comp.items()}, self.sh.value(), self.loss.value())
+        self.out.setText(f"Liquidus <b>{t['liquidus']:.0f} °C</b> · Tundish target <b style='color:#1F4E79'>"
+                         f"{t['tundish']:.0f} °C</b> · Ladle arrival ≈ <b>{t['ladle']:.0f} °C</b>")
+
+
 # ================================================================== Steel Specialist
 class SpecialistPage(AssistantPage):
     TITLE = "Steel Specialist"
@@ -78,8 +119,7 @@ class SpecialistPage(AssistantPage):
     BOT = "Steel Specialist"
     INTRO = ("Choose the area, describe the symptom (what, where, when, alarms, values) and add a photo if you have one. "
              "Answers follow: what I see → likely causes → checks → actions → safety.")
-    SUGGEST = ["Mould level hunting and stopper rod rising", "Strip break between F5 and F6",
-               "Coiling temperature +25 °C on head end", "Servo valve hunting, oil 62 °C"]
+    SUGGEST = ["Mould level hunting", "Strip break F5–F6", "Coiling temp too high", "Servo valve hunting"]
 
     def __init__(self, ctx):
         self.area = "Caster"
@@ -108,37 +148,9 @@ class SpecialistPage(AssistantPage):
 
     def build_side(self):
         side = QWidget()
-        side.setFixedWidth(320)
+        side.setFixedWidth(250)
         v = QVBoxLayout(side)
         v.setContentsMargins(0, 0, 0, 0)
-        box = QGroupBox("🌡 Casting temperature calculator")
-        f = QFormLayout(box)
-        self.comp = {}
-        defaults = {"C": 0.05, "Si": 0.02, "Mn": 0.25, "P": 0.012, "S": 0.008, "Al": 0.035, "Cu": 0.03, "Ni": 0.03, "Cr": 0.03}
-        for k, val in defaults.items():
-            sp = QDoubleSpinBox()
-            sp.setDecimals(3)
-            sp.setRange(0, 5)
-            sp.setSingleStep(0.01)
-            sp.setValue(val)
-            sp.valueChanged.connect(self.update_temp)
-            self.comp[k] = sp
-            f.addRow(f"% {k}", sp)
-        self.sh = QDoubleSpinBox()
-        self.sh.setRange(0, 80)
-        self.sh.setValue(25)
-        self.loss = QDoubleSpinBox()
-        self.loss.setRange(0, 120)
-        self.loss.setValue(38)
-        self.sh.valueChanged.connect(self.update_temp)
-        self.loss.valueChanged.connect(self.update_temp)
-        f.addRow("Superheat °C", self.sh)
-        f.addRow("Ladle losses °C", self.loss)
-        self.temp_out = QLabel()
-        self.temp_out.setWordWrap(True)
-        f.addRow(self.temp_out)
-        f.addRow(sub("General empirical formula — your plant grade table always has priority."))
-        v.addWidget(box)
         cbox = QGroupBox("📒 Lessons learned")
         cv = QVBoxLayout(cbox)
         cv.addWidget(sub("Similar past cases are used automatically in the answers."))
@@ -146,14 +158,11 @@ class SpecialistPage(AssistantPage):
         b.clicked.connect(lambda: edit_case(self, self.ctx.db, area=self.area))
         cv.addWidget(b)
         v.addWidget(cbox)
+        tb = button("🌡 Casting temperatures…", ghost=True, tip="Liquidus, tundish target and ladle arrival temperature")
+        tb.clicked.connect(lambda: TempDialog(self).exec())
+        v.addWidget(tb)
         v.addStretch()
-        self.update_temp()
         return side
-
-    def update_temp(self, *_):
-        t = specialist.casting_temperatures({k: s.value() for k, s in self.comp.items()}, self.sh.value(), self.loss.value())
-        self.temp_out.setText(f"Liquidus <b>{t['liquidus']:.0f} °C</b><br>Tundish target <b style='color:#1F4E79'>"
-                              f"{t['tundish']:.0f} °C</b><br>Ladle arrival ≈ <b>{t['ladle']:.0f} °C</b>")
 
     def answer_call(self, q, files):
         self._last_q = q
@@ -191,15 +200,17 @@ class SignalPlot(QWidget):
     def __init__(self):
         super().__init__()
         self.setMouseTracking(True)
-        self.rec = self.ref = None
+        self.rec = None
+        self.refs = []
         self.on, self.events, self.win = [], {}, None
         self.hx = None
         self.drag = None
         self.setMinimumHeight(320)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def set_data(self, rec, on, events, ref=None, reset=False):
-        self.rec, self.on, self.ref = rec, on, ref
+    def set_data(self, rec, on, events, refs=None, reset=False):
+        """refs: list of (Recording, colour) drawn as overlays aligned on the start of the main recording."""
+        self.rec, self.on, self.refs = rec, on, refs or []
         self.events = {e["signal"]: e for e in events}
         if reset or self.win is None:
             self.win = (float(rec.t[0]), float(rec.t[-1]))
@@ -242,21 +253,24 @@ class SignalPlot(QWidget):
             p.setBrush(QColor("#FAFBFC"))
             p.drawRect(QRectF(60, y0 + 4, self.width() - 72, lh - 8))
             tt, vv = t[m], s.v[m]
-            refv = None
-            if self.ref is not None:
-                rs = next((r for r in self.ref.signals if r.name == s.name), None)
-                if rs is not None:
-                    refv = np.interp(tt, self.ref.t - self.ref.t[0] + t[0], rs.v)
+            overlays = []
+            for ref, rcol in self.refs:
+                rs = next((r for r in ref.signals if r.name == s.name), None)
+                if rs is not None and len(ref.t) > 1:
+                    rt = ref.t - ref.t[0] + t[0]
+                    mm = (rt >= w0) & (rt <= w1)
+                    if mm.sum() > 1:
+                        overlays.append((rt[mm], rs.v[mm], rcol))
             if len(vv) < 2:
                 continue
-            allv = vv if refv is None else np.concatenate([vv, refv])
+            allv = np.concatenate([vv] + [o[1] for o in overlays])
             lo, hi = float(np.nanmin(allv)), float(np.nanmax(allv))
             span = (hi - lo) or 1.0
             Y = lambda val: y0 + lh - 12 - (val - lo) / span * (lh - 30)
             width = max(50, self.width() - 72)
-            if refv is not None:
-                td, vd = iba.decimate(tt, refv, width)
-                p.setPen(QPen(QColor("#B8C2CE"), 1.2))
+            for ot, ov, ocol in overlays:
+                td, vd = iba.decimate(ot, ov, width)
+                p.setPen(QPen(QColor(ocol), 1.1))
                 p.drawPolyline(QPolygonF([QPointF(self._x(a), Y(b)) for a, b in zip(td, vd)]))
             td, vd = iba.decimate(tt, vv, width)
             p.setPen(QPen(col, 1.3))
@@ -274,6 +288,18 @@ class SignalPlot(QWidget):
                 p.drawLine(QPointF(x, y0 + 4), QPointF(x, y0 + lh - 4))
                 p.setBrush(QColor("#C0392B"))
                 p.drawEllipse(QPointF(x, y0 + 10), 4, 4)
+        if self.refs:   # legend
+            names = [(self.rec.name, COLORS[0])] + [(r.name, c) for r, c in self.refs]
+            x = self.width() - 12
+            p.setFont(small)
+            for nm, c in reversed(names[:8]):
+                w = p.fontMetrics().horizontalAdvance(nm) + 22
+                x -= w
+                p.setPen(Qt.PenStyle.NoPen)
+                p.setBrush(QColor(c))
+                p.drawRect(QRectF(x, 9, 12, 4))
+                p.setPen(QColor("#1B2430"))
+                p.drawText(QPointF(x + 15, 15), nm)
         p.setPen(QColor("#5F6D7E"))
         p.setFont(small)
         for i in range(7):
@@ -333,21 +359,24 @@ class SignalPlot(QWidget):
 
 
 # ================================================================== iba page
+OVERLAY_COLORS = ["#E59866", "#76D7C4", "#BB8FCE", "#F7DC6F", "#85C1E9", "#F1948A", "#ABEBC6", "#D7BDE2"]
+
+
 class IbaPage(Page):
     def __init__(self, ctx):
         super().__init__(ctx)
         self.v.addWidget(h1("iba Analyzer"))
-        self.v.addWidget(sub("Open signals exported from ibaAnalyzer (CSV / TXT). Events are detected automatically; the first "
-                             "signal that moved is marked 🥇. Drag on the plot to zoom, double-click to reset."))
+        self.v.addWidget(sub("Open one or several iba recordings (.dat, or CSV/TXT exports). Events are detected automatically; "
+                             "the first signal that moved is marked 🥇. Drag on the plot to zoom, double-click to reset."))
         bar = QHBoxLayout()
-        b1 = button("📂 Open export (CSV/TXT)…")
-        b1.clicked.connect(self.open_file)
+        b1 = button("📂 Open .dat / CSV (one or several)…")
+        b1.clicked.connect(self.open_files)
         b2 = button("Load normal reference…", ghost=True, tip="Overlay a recording of normal operation in grey")
         b2.clicked.connect(self.open_ref)
         self.area = QComboBox()
         for k, l in specialist.AREAS:
             self.area.addItem(l, k)
-        self.area.setCurrentIndex(1)
+        self.area.setCurrentIndex(0)
         self.info = sub("No recording loaded.")
         bar.addWidget(b1)
         bar.addWidget(b2)
@@ -359,13 +388,32 @@ class IbaPage(Page):
         left = QWidget()
         lv = QVBoxLayout(left)
         lv.setContentsMargins(0, 0, 0, 0)
+        self.files_box = QWidget()
+        fb = QVBoxLayout(self.files_box)
+        fb.setContentsMargins(0, 0, 0, 0)
+        mr = QHBoxLayout()
+        mr.addWidget(QLabel("<b>Files</b>"))
+        self.mode = QComboBox()
+        self.mode.addItem("Compare files (overlay)", "compare")
+        self.mode.addItem("Join in time order", "join")
+        self.mode.currentIndexChanged.connect(self.rebuild)
+        mr.addWidget(self.mode, 1)
+        fb.addLayout(mr)
+        self.files = QListWidget()
+        self.files.setToolTip("Click a file to make it the main recording; tick files to overlay them (compare mode)")
+        self.files.currentRowChanged.connect(self.rebuild)
+        self.files.itemChanged.connect(self.rebuild)
+        fb.addWidget(self.files, 1)
+        lv.addWidget(self.files_box, 1)
+        self.files_box.setVisible(False)
+        lv.addWidget(QLabel("<b>Signals</b>"))
         self.filter = QLineEdit()
         self.filter.setPlaceholderText("Filter signals…")
         self.filter.textChanged.connect(self.filter_signals)
         self.sigs = QListWidget()
         self.sigs.itemChanged.connect(self.on_sig_toggle)
         lv.addWidget(self.filter)
-        lv.addWidget(self.sigs, 1)
+        lv.addWidget(self.sigs, 2)
         sp.addWidget(left)
         right = QSplitter(Qt.Orientation.Vertical)
         self.plot = SignalPlot()
@@ -375,12 +423,29 @@ class IbaPage(Page):
         sc.setWidget(self.plot)
         right.addWidget(sc)
         bottom = QSplitter(Qt.Orientation.Horizontal)
+        self.tabs = QTabWidget()
         self.ev = QTableWidget(0, 3)
         self.ev.setHorizontalHeaderLabels(["Time", "Signal", "Event"])
         self.ev.verticalHeader().setVisible(False)
         self.ev.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.ev.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        bottom.addWidget(self.ev)
+        self.tabs.addTab(self.ev, "⚡ Events")
+        allw = QWidget()
+        al = QVBoxLayout(allw)
+        al.setContentsMargins(0, 0, 0, 0)
+        self.b_scan = button("Scan all files", ghost=True, tip="Detect events in every loaded file")
+        self.b_scan.clicked.connect(self.scan_all)
+        self.scan = QTableWidget(0, 5)
+        self.scan.setHorizontalHeaderLabels(["File", "Start", "Events", "First signal to move", "Event"])
+        self.scan.verticalHeader().setVisible(False)
+        self.scan.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.scan.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.scan.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.scan.cellDoubleClicked.connect(self.open_scanned)
+        al.addWidget(self.b_scan)
+        al.addWidget(self.scan, 1)
+        self.tabs.addTab(allw, "📁 All files")
+        bottom.addWidget(self.tabs)
         aiw = QWidget()
         av = QVBoxLayout(aiw)
         av.setContentsMargins(0, 0, 0, 0)
@@ -399,51 +464,104 @@ class IbaPage(Page):
         self.ai_out.anchorClicked.connect(self.on_link)
         av.addWidget(self.ai_out, 1)
         bottom.addWidget(aiw)
-        bottom.setSizes([380, 620])
+        bottom.setSizes([420, 580])
         right.addWidget(bottom)
         right.setSizes([520, 240])
         sp.addWidget(right)
-        sp.setSizes([260, 900])
+        sp.setSizes([280, 900])
         self.v.addWidget(sp, 1)
-        self.rec = self.ref = None
-        self.on = []
-        self.events = []
-        self.window = None
+        self.recs, self.rec, self.ref = [], None, None
+        self.on, self.events, self.window = [], [], None
 
+    # ---------------- loading
     def on_link(self, url):
         s = url.toString()
         if s.startswith("src:") and s[4:].isdigit() and int(s[4:]):
             self.ctx.show_file(int(s[4:]))
 
-    def open_file(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Open iba export", "", "iba export (*.csv *.txt *.dat);;All files (*.*)")
-        if p:
-            self.load(p)
+    def open_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open iba recordings (Ctrl/Shift for several)", "",
+                                                "iba recordings (*.dat *.csv *.txt);;All files (*.*)")
+        if not paths:
+            return
+        self.info.setText(f"Loading {len(paths)} file(s)…")
+        self.ctx.runner.run(iba.load_many, (paths,), self.on_loaded, self.on_load_error)
 
     def load(self, path):
-        try:
-            rec = iba.load(path)
-        except Exception as e:
-            QMessageBox.warning(self, "iba", f"Cannot read this file:\n{e}")
+        self.on_loaded(iba.load_many([path]))
+
+    def on_load_error(self, msg):
+        self.info.setText("Loading failed.")
+        QMessageBox.warning(self, "iba", msg)
+
+    def on_loaded(self, res):
+        if res["errors"]:
+            msg = "\n\n".join(f"{f}: {e}" for f, e in res["errors"][:5])
+            more = f"\n\n… and {len(res['errors']) - 5} more" if len(res["errors"]) > 5 else ""
+            QMessageBox.warning(self, "iba", f"{len(res['errors'])} file(s) could not be read:\n\n{msg}{more}")
+        if not res["recs"]:
+            self.info.setText("No recording loaded.")
             return
-        self.rec, self.window = rec, None
-        self.on = [k < 8 for k in range(len(rec.signals))]
-        self.sigs.blockSignals(True)
-        self.sigs.clear()
-        for k, s in enumerate(rec.signals):
-            it = QListWidgetItem(f"{s.name}  [{s.unit}]" if s.unit else s.name)
+        self.recs = res["recs"]
+        self.files.blockSignals(True)
+        self.files.clear()
+        for k, r in enumerate(self.recs):
+            label = r.name + (f"   {r.start:%H:%M:%S}" if r.start else "")
+            it = QListWidgetItem(label)
             it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            it.setCheckState(Qt.CheckState.Checked if self.on[k] else Qt.CheckState.Unchecked)
-            it.setData(Qt.ItemDataRole.UserRole, k)
-            self.sigs.addItem(it)
-        self.sigs.blockSignals(False)
-        self.info.setText(f"{rec.name} · {len(rec.signals)} signals · {len(rec.t):,} samples · "
-                          f"{rec.t[0]:.4g} → {rec.t[-1]:.4g} {rec.t_label}")
+            it.setCheckState(Qt.CheckState.Checked if k < 2 else Qt.CheckState.Unchecked)
+            self.files.addItem(it)
+        self.files.setCurrentRow(0)
+        self.files.blockSignals(False)
+        self.files_box.setVisible(len(self.recs) > 1)
+        self.scan.setRowCount(0)
+        self.window = None
         self.ai_out.setHtml("")
-        self.recompute(reset=True)
+        self.rebuild(reset=True, new_signals=True)
+
+    def rebuild(self, *_, reset=False, new_signals=False):
+        if not self.recs:
+            return
+        if len(self.recs) > 1 and self.mode.currentData() == "join":
+            rec = iba.join(self.recs)
+        else:
+            i = max(0, self.files.currentRow())
+            rec = self.recs[i]
+        changed = self.rec is None or [s.name for s in rec.signals] != [s.name for s in self.rec.signals]
+        self.rec = rec
+        if new_signals or changed or len(self.on) != len(rec.signals):
+            self.on = [k < 8 for k in range(len(rec.signals))]
+            self.sigs.blockSignals(True)
+            self.sigs.clear()
+            for k, s in enumerate(rec.signals):
+                it = QListWidgetItem(f"{s.name}  [{s.unit}]" if s.unit else s.name)
+                it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                it.setCheckState(Qt.CheckState.Checked if self.on[k] else Qt.CheckState.Unchecked)
+                it.setData(Qt.ItemDataRole.UserRole, k)
+                self.sigs.addItem(it)
+            self.sigs.blockSignals(False)
+            reset = True
+        self.info.setText(f"{rec.name} · {len(rec.signals)} signals · {len(rec.t):,} samples · "
+                          f"{rec.t[0]:.4g} → {rec.t[-1]:.4g} {rec.t_label}"
+                          + (f" · {len(self.recs)} files loaded" if len(self.recs) > 1 else ""))
+        self.recompute(reset=reset)
+
+    def overlays(self):
+        refs = []
+        if len(self.recs) > 1 and self.mode.currentData() == "compare":
+            main = max(0, self.files.currentRow())
+            n = 0
+            for k in range(self.files.count()):
+                if k != main and self.files.item(k).checkState() == Qt.CheckState.Checked:
+                    refs.append((self.recs[k], OVERLAY_COLORS[n % len(OVERLAY_COLORS)]))
+                    n += 1
+        if self.ref is not None:
+            refs.append((self.ref, "#B8C2CE"))
+        return refs
 
     def open_ref(self):
-        p, _ = QFileDialog.getOpenFileName(self, "Normal reference (same signals)", "", "iba export (*.csv *.txt);;All files (*.*)")
+        p, _ = QFileDialog.getOpenFileName(self, "Normal reference (same signals)", "",
+                                           "iba recordings (*.dat *.csv *.txt);;All files (*.*)")
         if not p:
             return
         try:
@@ -475,7 +593,7 @@ class IbaPage(Page):
             return
         w = self.window
         self.events = iba.analyse(self.rec, self.selected(), *(w if w else (None, None)))
-        self.plot.set_data(self.rec, self.on, self.events, self.ref, reset=reset)
+        self.plot.set_data(self.rec, self.on, self.events, self.overlays(), reset=reset)
         self.ev.setRowCount(len(self.events))
         for i, e in enumerate(self.events):
             vals = [f"{e['t']:.4g}", ("🥇 " if i == 0 else "") + e["signal"], f"{e['type']} {e['dir']}"]
@@ -483,10 +601,40 @@ class IbaPage(Page):
                 self.ev.setItem(i, j, QTableWidgetItem(val))
         self.ev.resizeColumnToContents(0)
 
+    # ---------------- all files
+    def scan_all(self):
+        if not self.recs:
+            return
+        names = [s.name for k, s in enumerate(self.rec.signals) if self.on[k]] if self.rec else None
+        rows = iba.scan_files(self.recs, names)
+        self.scan.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            vals = [r["file"], f"{r['start']:%Y-%m-%d %H:%M:%S}" if r["start"] else "", str(r["events"]),
+                    r["first"], (f"{r['type']} at {r['t']:.4g}" if r["first"] else "—")]
+            for j, val in enumerate(vals):
+                it = QTableWidgetItem(val)
+                if r["events"] == 0:
+                    it.setForeground(QBrush(QColor("#8A96A3")))
+                self.scan.setItem(i, j, it)
+        self.scan.resizeColumnsToContents()
+        self.tabs.setCurrentIndex(1)
+        bad = sum(1 for r in rows if r["events"])
+        self.ctx.set_status(f"{bad} of {len(rows)} files have events in the selected signals")
+
+    def open_scanned(self, row, col):
+        if self.mode.currentData() == "join":
+            self.mode.setCurrentIndex(0)
+        self.files.setCurrentRow(row)
+        self.tabs.setCurrentIndex(0)
+
+    # ---------------- AI
     def context(self):
         txt = iba.events_text(self.rec, self.events, self.selected())
         if self.window:
             txt += f"\nAnalysed time window: {self.window[0]:.4g} to {self.window[1]:.4g}."
+        others = [r.name for r, c in self.overlays()]
+        if others:
+            txt += "\nCompared with: " + ", ".join(others)
         return txt
 
     def explain(self):
@@ -500,10 +648,10 @@ class IbaPage(Page):
                             self.on_ai, self.on_ai_error)
 
     def on_ai(self, res):
+        import re
         self.b_ai.setEnabled(True)
         body = md_to_html(res["text"])
         ids = {str(n): (fid or 0) for n, fid, name, path in res["sources"]}
-        import re
         body = re.sub(r'href="cite:(\d+)"', lambda m: f'href="src:{ids.get(m.group(1), 0)}"', body)
         src = "".join(f"<div>[{n}] {html.escape(name)}</div>" for n, fid, name, path in res["sources"])
         self.ai_out.setHtml(body + (f"<hr><span style='font-size:8.5pt;color:#5F6D7E'><b>Sources</b>{src}</span>" if src else ""))

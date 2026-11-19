@@ -224,3 +224,28 @@ def test_hydraulics():
     words = [(10, 10, 30, 20, "SV1"), (10, 30, 40, 40, "160"), (45, 30, 60, 40, "bar"), (300, 300, 320, 310, "S355")]
     comps = h.components_from_words(words)
     assert [c["tag"] for c in comps] == ["SV1"] and comps[0]["values"] == ["160 bar"]
+
+
+def test_iba_dat_layouts_join_scan(tmp_path):
+    import datetime as dt
+    import numpy as np
+    from apex_search import iba
+    n = 400
+    a = np.r_[np.full(200, 5.0), np.full(200, 9.0)] + np.random.default_rng(2).normal(0, 0.01, n)
+    # layout 1: dict name -> list, single interval
+    r1 = iba._from_decoded("a.dat", "2026-08-24T12:56:00", 0.1, {"Speed [m/min]": a.tolist(), "B": [1.0] * n})
+    assert r1.signals[0].name == "Speed" and r1.signals[0].unit == "m/min" and abs(r1.t[-1] - 39.9) < 1e-6
+    assert r1.start == dt.datetime(2026, 8, 24, 12, 56)
+    # layout 2: dict name -> {values, unit, interval} with different rates
+    r2 = iba._from_decoded("b.dat", dt.datetime(2026, 8, 24, 12, 59), None,
+                           {"Speed": {"values": a.tolist(), "unit": "m/min", "interval": 0.1},
+                            "Slow": {"values": [1.0] * 40, "interval": 1.0}})
+    assert len(r2.signals[1].v) == n
+    j = iba.join([r2, r1])
+    assert len(j.t) == 2 * n and j.t[0] == 0 and j.t[-1] > 180
+    rows = iba.scan_files([r1, r2])
+    assert rows[0]["first"] == "Speed" and rows[0]["events"] >= 1
+    try:
+        iba.load_dat(str(tmp_path / "x.dat"))
+    except ValueError as e:
+        assert "ASCII" in str(e)

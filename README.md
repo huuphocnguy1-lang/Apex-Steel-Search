@@ -19,7 +19,7 @@
 | 🧬 **Duplicates** | Finds identical copies (Downloads, WeChat, USB…) and moves them to a `_to_delete` folder. |
 | ⚡ **Fast** | Handles 10,000+ documents with searches under 0.2 s. Only new or changed files are indexed, and the index updates automatically. |
 | 🛠 **Steel Specialist** | Troubleshooting for ESP, casting, hot strip mill, pay-off reel, laminar cooling and hydraulics: what I see → likely causes → checks → actions → safety. Accepts photos and uses your lessons learned. Includes a casting temperature calculator (liquidus, tundish, ladle). |
-| 📈 **iba Analyzer** | Open CSV/TXT exported from ibaAnalyzer: stacked signals, zoom, comparison with a normal reference, automatic event detection (🥇 first signal to move) and AI explanation. |
+| 📈 **iba Analyzer** | Open iba **.dat** files directly (one or several), or CSV/TXT exports. Compare files (overlay), join consecutive files in time order, scan all files for events: stacked signals, zoom, comparison with a normal reference, automatic event detection (🥇 first signal to move) and AI explanation. |
 | 🔧 **Hydraulics** | Open a hydraulic schematic PDF, drag a box around a zone and the AI explains components, function, oil flow and faults. Includes calculators (cylinder, pump, accumulator) and ISO 4406 targets. |
 | 📒 **Lessons learned** | Log of solved problems (symptom, root cause, fix), used automatically by the Steel Specialist. |
 | 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
