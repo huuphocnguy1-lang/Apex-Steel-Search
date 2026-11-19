@@ -149,3 +149,78 @@ def test_assistant_with_attachment(env, tmp_path):
     a = search.answer_with_files(db, ai, "", [], [str(note), str(img)], cfg)
     assert a["sources"][0][2] == "site_note.txt" and a["sources"][0][1] is None
     assert ai.last_images and len(ai.last_images) == 1
+
+
+# ---------------------------------------------------------------- v0.3.0
+def test_doctype():
+    from apex_search import doctype
+    mech = "SECTION A-A  DETAIL B  SCALE 1:10  General tolerances ISO 2768-m  Ra 3.2  Material S355J2  Weight 42 kg  Ø120 H7"
+    hyd = "HPU hydraulic power unit. Pump P1 71 cm3, relief valve 210 bar, accumulator 32 l, servo valve SV1, Y1 Y2 Y3, 60 l/min, tank, filter"
+    pid = "P&ID cooling water  PT-101  FIC-205  LV-12  TT-301  DN150 PN16  6\"-CW-1023  control valve"
+    ele = "MCC panel  400 VAC  24 VDC  contactor K1  -Q1 circuit breaker  X1:3  terminal  cable 4x2.5 mm²  PLC I/O"
+    assert doctype.classify("a.pdf", "pdf", "drawing", mech) == "mechanical"
+    assert doctype.classify("b.pdf", "pdf", "drawing", hyd) == "hydraulic"
+    assert doctype.classify("c.pdf", "pdf", "drawing", pid) == "pid"
+    assert doctype.classify("d.dwg", "dwg", "drawing", ele) == "electrical"
+    assert doctype.classify("e.docx", "docx", "doc", "Daily report: weather sunny, grouting done.") == "document"
+    assert doctype.classify("f.jpg", "jpg", "photo", "") == "photo"
+
+
+def test_classify_existing_and_filter(env):
+    db, cfg, ai, ix, _ = env
+    db.set_dtypes([(None, r["id"]) for r in db.library_rows()])
+    assert ix.classify_existing() > 0
+    assert all(r["dtype"] for r in db.library_rows())
+    res = search.keyword_search(db, "base plate", {"kind": "t:hydraulic"})["results"]
+    assert res == []
+
+
+def test_cases_and_specialist(env, tmp_path):
+    from apex_search import specialist
+    db, cfg, ai, ix, _ = env
+    cid = db.case_save({"date": "2026-11-15", "area": "Caster", "symptom": "Mould level hunting, stopper rod at 80 %",
+                        "cause": "SEN clogging, argon flow dropped", "fix": "SEN changed"})
+    assert db.cases("stopper")[0]["id"] == cid
+    assert db.similar_cases("stopper rod rising mould level hunting", "Caster")[0]["id"] == cid
+    a = specialist.specialist_answer(db, ai, "Caster", "Mould level hunting and stopper rod rising")
+    assert any("Lesson learned" in s[2] for s in a["sources"])
+    t = specialist.casting_temperatures({"C": 0.05, "Mn": 0.2, "Al": 0.03}, 25, 38)
+    assert 1528 < t["liquidus"] < 1534 and abs(t["tundish"] - t["liquidus"] - 25) < 1e-9
+    db.case_delete(cid)
+    assert db.cases() == []
+
+
+def test_iba_csv_events(tmp_path):
+    import numpy as np
+    from apex_search import iba
+    t = np.arange(0, 120, 0.25)
+    rnd = np.random.default_rng(1)
+    argon = 9 - 4 * np.clip((t - 38) / 36, 0, 1) + rnd.normal(0, 0.07, len(t))
+    stopper = 52 + 27 * np.clip((t - 44) / 36, 0, 1) + rnd.normal(0, 0.25, len(t))
+    level = rnd.normal(0, 0.35, len(t)) + np.sin(t * 2 * np.pi * 0.33) * np.clip((t - 66) * 0.9, 0, 12)
+    p = tmp_path / "cc1_export.csv"
+    with open(p, "w") as f:
+        f.write("Time;Argon flow;Stopper position;Mould level\n s;l/min;%;mm\n")
+        for i in range(len(t)):
+            f.write(f"{t[i]:.2f};{argon[i]:.3f};{stopper[i]:.3f};{level[i]:.3f}\n".replace(".", ","))
+    rec = iba.load(str(p))
+    assert [s.name for s in rec.signals] == ["Argon flow", "Stopper position", "Mould level"]
+    assert rec.signals[0].unit == "l/min" and abs(rec.t[-1] - 119.75) < 1e-6
+    ev = iba.analyse(rec)
+    assert ev[0]["signal"] == "Argon flow" and ev[0]["dir"] == "down"
+    assert {e["signal"]: e["type"] for e in ev}["Mould level"] == "oscillation"
+    assert "first" in iba.events_text(rec, ev)
+    td, vd = iba.decimate(rec.t, rec.signals[2].v, 50)
+    assert len(vd) <= 2 * 50 + 2
+
+
+def test_hydraulics():
+    from apex_search import hydraulics as h
+    c = h.cylinder(125, 70, 160, 60)
+    assert 195 < c["push_kN"] < 197 and c["pull_kN"] < c["push_kN"]
+    assert abs(h.pump(71, 1480, 160)["flow_lmin"] - 99.8) < 0.2
+    assert h.accumulator(32, 90, 120, 160)["usable_l"] > 3
+    assert h.accumulator(32, 130, 120, 160)["usable_l"] == 0
+    words = [(10, 10, 30, 20, "SV1"), (10, 30, 40, 40, "160"), (45, 30, 60, 40, "bar"), (300, 300, 320, 310, "S355")]
+    comps = h.components_from_words(words)
+    assert [c["tag"] for c in comps] == ["SV1"] and comps[0]["values"] == ["160 bar"]

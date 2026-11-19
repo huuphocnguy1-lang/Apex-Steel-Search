@@ -18,6 +18,11 @@
 | 🖼 **Similar photos** | Finds site photos that look like a chosen photo. |
 | 🧬 **Duplicates** | Finds identical copies (Downloads, WeChat, USB…) and moves them to a `_to_delete` folder. |
 | ⚡ **Fast** | Handles 10,000+ documents with searches under 0.2 s. Only new or changed files are indexed, and the index updates automatically. |
+| 🛠 **Steel Specialist** | Troubleshooting for ESP, casting, hot strip mill, pay-off reel, laminar cooling and hydraulics: what I see → likely causes → checks → actions → safety. Accepts photos and uses your lessons learned. Includes a casting temperature calculator (liquidus, tundish, ladle). |
+| 📈 **iba Analyzer** | Open CSV/TXT exported from ibaAnalyzer: stacked signals, zoom, comparison with a normal reference, automatic event detection (🥇 first signal to move) and AI explanation. |
+| 🔧 **Hydraulics** | Open a hydraulic schematic PDF, drag a box around a zone and the AI explains components, function, oil flow and faults. Includes calculators (cylinder, pump, accumulator) and ISO 4406 targets. |
+| 📒 **Lessons learned** | Log of solved problems (symptom, root cause, fix), used automatically by the Steel Specialist. |
+| 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
 | 🔒 **Offline / ☁ Online** | Offline keeps all data on your laptop. Online lets the assistant use a cloud AI (Qwen, DeepSeek…). |
 
 ## Get the app (no programming needed)
@@ -51,6 +56,7 @@ GitHub then publishes the installer and the zip under **Releases**.
    ```
    ollama pull qwen2.5:7b
    ollama pull bge-m3
+   ollama pull qwen2.5vl:7b     (photos)
    ```
 3. In the app, go to **Settings → Test AI connection**, then **Folders & index → 🧠 Build smart index**.
 

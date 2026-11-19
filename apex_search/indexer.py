@@ -4,7 +4,7 @@ import logging
 import os
 import time
 
-from . import meta
+from . import doctype, meta
 from .extract import KINDS, SUPPORTED, extract
 
 log = logging.getLogger(__name__)
@@ -144,13 +144,33 @@ class Indexer:
             "material": meta.material(text), "ocr": 1 if ex.ocr else 0, "phash": ex.phash,
             "pages": ex.pages, "error": ex.error, "indexed_at": time.time(),
         }
+        f["dtype"] = doctype.classify(name, ext, kind, text, ex.large_format)
         f["tags"] = " ".join(str(x) for x in (f["dno"], f["rev"] and f"Rev {f['rev']}", f["material"],
-                                              f["project"], f["lang"], kind) if x)
+                                              f["project"], f["lang"], kind,
+                                              doctype.LABELS.get(f["dtype"], "")) if x)
         self.db.upsert(f, text, meta.chunks(text, title))
         dt = time.time() - t0
         note = f" · {ex.error}" if ex.error else (" · OCR" if ex.ocr else "")
         self.log(f"{'⚠' if ex.error else '✓'} {name} ({dt:.1f} s){note}")
         return True
+
+    def classify_existing(self) -> int:
+        """Gives a drawing type to files indexed by older versions, from the stored text (files are not re-read)."""
+        done = 0
+        while not self.should_stop():
+            rows = self.db.untyped(2000)
+            if not rows:
+                break
+            items = [(doctype.classify(r["name"], r["ext"], r["kind"], r["body"] or "",
+                                       r["kind"] == "drawing"), r["id"]) for r in rows]
+            self.db.set_dtypes(items)
+            done += len(items)
+            self.progress(done, done + len(self.db.untyped(1)), "drawing types")
+        if done:
+            c = self.db.dtype_counts()
+            self.log(f"Drawing types recognised for {done} files: " + ", ".join(
+                f"{doctype.LABELS.get(k, k)} {v}" for k, v in sorted(c.items(), key=lambda x: -x[1]) if k))
+        return done
 
     def remove_path(self, path: str):
         if self.db.delete_path(path):

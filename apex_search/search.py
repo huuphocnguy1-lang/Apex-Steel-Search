@@ -13,6 +13,8 @@ class SmartUnavailable(Exception):
 FILTER_KINDS = [
     ("All types", "all"), ("Drawings", "drawing"), ("PDF", "pdf"), ("Word", "word"), ("Excel", "excel"),
     ("Photos", "photo"), ("Email", "email"), ("Scans (OCR)", "scan"),
+    ("Mechanical drawings", "t:mechanical"), ("Hydraulic schematics", "t:hydraulic"), ("P&ID (process)", "t:pid"),
+    ("Electrical schematics", "t:electrical"),
 ]
 
 
@@ -46,6 +48,8 @@ def _passes(r, filters: dict, latest_map: dict) -> bool:
     if k == "email" and kind != "email":
         return False
     if k == "scan" and not r["ocr"]:
+        return False
+    if k.startswith("t:") and (r["dtype"] if "dtype" in r.keys() else None) != k[2:]:
         return False
     p = filters.get("project")
     if p and p != "all" and r["project"] != p:

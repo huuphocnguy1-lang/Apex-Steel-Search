@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDia
                                QMessageBox, QPlainTextEdit, QProgressBar, QScrollArea, QSplitter, QTableWidget,
                                QTableWidgetItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
-from .. import meta, search
+from .. import doctype, meta, search
 from .common import (PreviewWidget, badge_html, button, fmt_date, fmt_size, h1, load_thumb_image, md_to_html,
                      open_file, placeholder, rev_html, sub, thumb_pixmap)
 
@@ -219,6 +219,12 @@ IMG_FILTER = "Pictures and documents (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.we
 
 
 class AssistantPage(Page):
+    TITLE = "AI assistant"
+    SUBTITLE = ("Ask questions about your documents, or attach pictures and files (📎, drag & drop, or paste a "
+                "screenshot). Every answer lists its sources — click [1], [2]… to open the file.")
+    BOT = "Apex AI"
+    INTRO = ('Ask anything about your indexed documents, or attach a photo of a defect, an HMI alarm screen, a drawing '
+             'or a report. Offline answers use the local models (Ollama); Online uses the cloud models.')
     SUGGEST = ["What bolt grade and torque for the crane girder connections?",
                "What changed in the latest revision of the column base drawing?",
                "How long before loading after grouting?",
@@ -228,7 +234,7 @@ class AssistantPage(Page):
         super().__init__(ctx)
         self.setAcceptDrops(True)
         top = QHBoxLayout()
-        top.addWidget(h1("AI assistant"))
+        top.addWidget(h1(self.TITLE))
         top.addStretch()
         self.model = sub("")
         top.addWidget(self.model)
@@ -236,24 +242,24 @@ class AssistantPage(Page):
         clr.clicked.connect(self.clear)
         top.addWidget(clr)
         self.v.addLayout(top)
-        self.v.addWidget(sub("Ask questions about your documents, or attach pictures and files (📎, drag & drop, or paste a "
-                             "screenshot). Every answer lists its sources — click [1], [2]… to open the file."))
+        self.v.addWidget(sub(self.SUBTITLE))
+        self.col = QVBoxLayout()
         self.view = QTextBrowser()
         self.view.setOpenLinks(False)
         self.view.anchorClicked.connect(self.on_link)
-        self.v.addWidget(self.view, 1)
+        self.col.addWidget(self.view, 1)
         chips = QHBoxLayout()
         for s in self.SUGGEST:
             b = button(s, chip=True)
             b.clicked.connect(lambda _=False, t=s: self.ask(t))
             chips.addWidget(b)
         chips.addStretch()
-        self.v.addLayout(chips)
+        self.col.addLayout(chips)
         self.att_row = QHBoxLayout()
         self.att_box = QWidget()
         self.att_box.setLayout(self.att_row)
         self.att_row.setContentsMargins(0, 0, 0, 0)
-        self.v.addWidget(self.att_box)
+        self.col.addWidget(self.att_box)
         row = QHBoxLayout()
         attach = button("📎", ghost=True, tip="Attach pictures or documents")
         attach.clicked.connect(self.pick_files)
@@ -268,11 +274,29 @@ class AssistantPage(Page):
         row.addWidget(paste)
         row.addWidget(self.inp, 1)
         row.addWidget(self.send)
-        self.v.addLayout(row)
+        self.col.addLayout(row)
+        side = self.build_side()
+        if side is not None:
+            hb = QHBoxLayout()
+            hb.addLayout(self.col, 1)
+            hb.addWidget(side)
+            self.v.addLayout(hb, 1)
+        else:
+            self.v.addLayout(self.col, 1)
         self.history, self.parts, self.busy, self.files = [], [], False, []
         self.paths_by_id = {}
         self.clear()
         self._refresh_attachments()
+
+    # ---------------- hooks for subclasses (Steel Specialist)
+    def build_side(self):
+        return None
+
+    def answer_call(self, q, files):
+        return search.answer_with_files, (self.ctx.db, self.ctx.ai, q, list(self.history), files, dict(self.ctx.cfg))
+
+    def answer_footer(self, res):
+        return ""
 
     # ---------------- attachments
     def pick_files(self):
@@ -330,9 +354,7 @@ class AssistantPage(Page):
 
     def clear(self):
         self.history, self.parts = [], []
-        self.render('<p style="color:#5F6D7E">Ask anything about your indexed documents, or attach a photo of a defect, '
-                    'an HMI alarm screen, a drawing or a report. Offline answers use the local models (Ollama); '
-                    'Online uses the cloud models.</p>')
+        self.render(f'<p style="color:#5F6D7E">{self.INTRO}</p>')
 
     def render(self, extra=""):
         self.view.setHtml("".join(self.parts) + extra)
@@ -368,9 +390,8 @@ class AssistantPage(Page):
         self.render('<p style="color:#5F6D7E">🤖 ' + ("Reading the attached files and thinking…" if files else "Thinking…")
                     + f" ({html.escape(model)})</p>")
         self._q = q or "(attached files)"
-        self.ctx.runner.run(search.answer_with_files,
-                            (self.ctx.db, self.ctx.ai, q, list(self.history), files, dict(self.ctx.cfg)),
-                            self.on_answer, self.on_error)
+        fn, args = self.answer_call(q, files)
+        self.ctx.runner.run(fn, args, self.on_answer, self.on_error)
 
     def on_answer(self, res):
         self.busy = False
@@ -379,16 +400,17 @@ class AssistantPage(Page):
         ids = {}
         for src in res["sources"]:
             n, fid, name, path = src
-            key = str(fid) if fid else f"p{len(self.paths_by_id)}"
-            if not fid:
+            key = str(fid) if fid else (f"p{len(self.paths_by_id)}" if path else "0")
+            if not fid and path:
                 self.paths_by_id[key] = path
             ids[str(n)] = key
         body = re.sub(r'href="cite:(\d+)"', lambda m: f'href="src:{ids.get(m.group(1), 0)}"', body)
         src = "".join(f'<div><a href="src:{ids[str(n)]}" style="color:#5F6D7E;text-decoration:none">[{n}] '
                       f'{"📎 " if not fid else ""}{html.escape(name)}</a></div>' for n, fid, name, path in res["sources"])
         self.parts.append(f'<table width="100%" style="margin:6px 0"><tr><td style="background:white;border:1px solid #E1E6ED;padding:10px 12px">'
-                          f'<span style="color:#5F6D7E;font-size:8.5pt">🤖 Apex AI · {html.escape(self.ctx.ai.chat_model_label())}</span><br>{body}'
-                          + (f'<hr><span style="font-size:8.5pt"><b>Sources</b>{src}</span>' if src else "") +
+                          f'<span style="color:#5F6D7E;font-size:8.5pt">🤖 {self.BOT} · {html.escape(self.ctx.ai.chat_model_label())}</span><br>{body}'
+                          + (f'<hr><span style="font-size:8.5pt"><b>Sources</b>{src}</span>' if src else "")
+                          + self.answer_footer(res) +
                           '</td><td width="15%"></td></tr></table>')
         self.history += [{"role": "user", "content": self._q}, {"role": "assistant", "content": res["text"]}]
         self.render()
@@ -419,7 +441,7 @@ class AssistantPage(Page):
 
 # ================================================================== library
 class LibraryPage(Page):
-    COLS = ["File", "Type", "Project", "Drawing no.", "Rev", "Latest", "Material", "Lang", "OCR", "Date", "Size", "Folder"]
+    COLS = ["File", "Type", "Drawing type", "Project", "Drawing no.", "Rev", "Latest", "Material", "Lang", "OCR", "Date", "Size", "Folder"]
 
     def __init__(self, ctx):
         super().__init__(ctx)
@@ -460,7 +482,8 @@ class LibraryPage(Page):
         t.setRowCount(len(self.rows))
         for i, r in enumerate(self.rows):
             lat = "" if not r["dno"] else ("✓" if latest.get(r["dno"]) == r["rev"] else "old")
-            vals = [r["name"], r["ext"].upper(), r["project"] or "", r["dno"] or "", r["rev"] or "", lat,
+            vals = [r["name"], r["ext"].upper(), doctype.LABELS.get(r["dtype"], "") if r["dtype"] else "",
+                    r["project"] or "", r["dno"] or "", r["rev"] or "", lat,
                     r["material"] or "", r["lang"] or "", "yes" if r["ocr"] else "", fmt_date(r["mtime"]),
                     fmt_size(r["size"]), os.path.dirname(r["path"])]
             for j, val in enumerate(vals):
@@ -482,7 +505,8 @@ class LibraryPage(Page):
     def export(self):
         latest = self.ctx.db.latest_revs()
         export_rows_xlsx(self, self.COLS[:-1] + ["Path"],
-                         [(r["name"], r["ext"].upper(), r["project"], r["dno"], r["rev"],
+                         [(r["name"], r["ext"].upper(), doctype.LABELS.get(r["dtype"], "") if r["dtype"] else "",
+                           r["project"], r["dno"], r["rev"],
                            "" if not r["dno"] else ("yes" if latest.get(r["dno"]) == r["rev"] else "no"),
                            r["material"], r["lang"], "yes" if r["ocr"] else "", fmt_date(r["mtime"]),
                            fmt_size(r["size"]), r["path"]) for r in self.rows], "library.xlsx")
@@ -1015,6 +1039,8 @@ class SettingsPage(Page):
         self.ckey.setEchoMode(QLineEdit.EchoMode.Password)
         self.cchat = QLineEdit(c["cloud_chat_model"])
         self.cemb = QLineEdit(c["cloud_embed_model"])
+        self.lvis = QLineEdit(c.get("local_vision_model", "qwen2.5vl:7b"))
+        self.cvis = QLineEdit(c.get("cloud_vision_model", "qwen-vl-max"))
         self.eprov = QComboBox()
         self.eprov.addItem("Local (Ollama) — recommended, offline", "local")
         self.eprov.addItem("Cloud", "cloud")
@@ -1040,12 +1066,15 @@ class SettingsPage(Page):
         form.addRow("Ollama address", self.ollama)
         form.addRow("Chat model", self.lchat)
         form.addRow("Smart search model", self.lemb)
-        form.addRow("", sub("Install Ollama from ollama.com, then run:  ollama pull qwen2.5:7b   and   ollama pull bge-m3"))
+        form.addRow("Picture model", self.lvis)
+        form.addRow("", sub("Install Ollama from ollama.com, then run:  ollama pull qwen2.5:7b  ·  ollama pull bge-m3  ·  "
+                                "ollama pull qwen2.5vl:7b (pictures)"))
         section("Online AI (OpenAI-compatible: Qwen / DeepSeek …)")
         form.addRow("API address", self.cbase)
         form.addRow("API key", self.ckey)
         form.addRow("Chat model", self.cchat)
         form.addRow("Embedding model", self.cemb)
+        form.addRow("Picture model", self.cvis)
         section("Smart index")
         form.addRow("Built with", self.eprov)
         form.addRow("", self.auto)
@@ -1087,6 +1116,7 @@ class SettingsPage(Page):
                  local_chat_model=self.lchat.text().strip(), local_embed_model=self.lemb.text().strip(),
                  cloud_base_url=self.cbase.text().strip(), cloud_api_key=self.ckey.text().strip(),
                  cloud_chat_model=self.cchat.text().strip(), cloud_embed_model=self.cemb.text().strip(),
+                 local_vision_model=self.lvis.text().strip(), cloud_vision_model=self.cvis.text().strip(),
                  embed_provider=self.eprov.currentData(), auto_smart=self.auto.isChecked(),
                  ocr_enabled=self.ocr.isChecked(), oda_path=self.oda.text().strip(),
                  project_regex=self.preg.text().strip() or r"\bP-?\d{3,5}\b",

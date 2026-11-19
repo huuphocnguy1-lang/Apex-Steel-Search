@@ -7,7 +7,7 @@ from collections import defaultdict
 from .meta import rev_key
 
 FILE_COLS = ["path", "name", "ext", "kind", "size", "mtime", "hash", "project", "dno", "rev", "title",
-             "lang", "material", "ocr", "phash", "pages", "error", "indexed_at", "tags"]
+             "lang", "material", "ocr", "phash", "pages", "error", "indexed_at", "tags", "dtype"]
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files(
@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS texts(file_id INTEGER PRIMARY KEY, body TEXT);
 CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY, file_id INTEGER, idx INTEGER, text TEXT, vec BLOB, model TEXT);
 CREATE INDEX IF NOT EXISTS ix_chunks_file ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS ix_chunks_vec ON chunks(model);
+CREATE TABLE IF NOT EXISTS cases(id INTEGER PRIMARY KEY, date TEXT, area TEXT, symptom TEXT, cause TEXT, fix TEXT,
+  author TEXT, created REAL);
 """
 
 
@@ -39,6 +41,10 @@ class DB:
     def _init(self):
         c = self.conn
         c.executescript(SCHEMA)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(files)")}
+        if "dtype" not in cols:   # upgrade from v0.1/v0.2: keep the existing index
+            c.execute("ALTER TABLE files ADD COLUMN dtype TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_files_dtype ON files(dtype)")
         try:
             c.execute("CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(name, title, body, tags, tokenize='trigram')")
         except sqlite3.OperationalError:
@@ -170,6 +176,60 @@ class DB:
         except OSError:
             s["db_mb"] = 0
         return s
+
+    # ------------------------------------------------------------ drawing types
+    def untyped(self, limit: int = 2000):
+        return self.q("SELECT f.id, f.name, f.ext, f.kind, t.body FROM files f LEFT JOIN texts t ON t.file_id=f.id "
+                      "WHERE f.dtype IS NULL LIMIT ?", (limit,))
+
+    def set_dtypes(self, items: list[tuple[str, int]]):
+        with self.lock, self.conn as c:
+            c.executemany("UPDATE files SET dtype=? WHERE id=?", items)
+
+    def dtype_counts(self) -> dict:
+        return {r[0]: r[1] for r in self.q("SELECT dtype, COUNT(*) FROM files GROUP BY dtype")}
+
+    def files_by_dtype(self, dtype: str, text: str = "", limit: int = 2000):
+        like = f"%{text}%"
+        return self.q("SELECT * FROM files WHERE dtype=? AND (name LIKE ? OR title LIKE ? OR project LIKE ?) "
+                      "ORDER BY mtime DESC LIMIT ?", (dtype, like, like, like, limit))
+
+    # ------------------------------------------------------------ lessons learned
+    def cases(self, text: str = ""):
+        if text:
+            like = f"%{text}%"
+            return self.q("SELECT * FROM cases WHERE area LIKE ? OR symptom LIKE ? OR cause LIKE ? OR fix LIKE ? "
+                          "ORDER BY date DESC, id DESC", (like, like, like, like))
+        return self.q("SELECT * FROM cases ORDER BY date DESC, id DESC")
+
+    def case_save(self, d: dict) -> int:
+        import time
+        with self.lock, self.conn as c:
+            if d.get("id"):
+                c.execute("UPDATE cases SET date=?, area=?, symptom=?, cause=?, fix=?, author=? WHERE id=?",
+                          (d["date"], d["area"], d["symptom"], d["cause"], d["fix"], d.get("author", ""), d["id"]))
+                return d["id"]
+            cur = c.execute("INSERT INTO cases(date, area, symptom, cause, fix, author, created) VALUES(?,?,?,?,?,?,?)",
+                            (d["date"], d["area"], d["symptom"], d["cause"], d["fix"], d.get("author", ""), time.time()))
+            return cur.lastrowid
+
+    def case_delete(self, cid: int):
+        with self.lock, self.conn as c:
+            c.execute("DELETE FROM cases WHERE id=?", (cid,))
+
+    def similar_cases(self, text: str, area: str | None = None, k: int = 3):
+        import re as _re
+        words = {w for w in _re.findall(r"[\w\u4e00-\u9fff]{3,}", (text or "").lower())}
+        if not words:
+            return []
+        scored = []
+        for r in self.q("SELECT * FROM cases"):
+            hay = f"{r['symptom']} {r['cause']} {r['fix']}".lower()
+            s = sum(1 for w in words if w in hay) + (1.5 if area and r["area"] == area else 0)
+            if s >= 2:
+                scored.append((s, r))
+        scored.sort(key=lambda x: -x[0])
+        return [r for _, r in scored[:k]]
 
     # ------------------------------------------------------------ vectors
     def reset_vectors_not(self, model: str):

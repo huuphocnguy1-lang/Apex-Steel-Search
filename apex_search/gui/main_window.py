@@ -18,6 +18,7 @@ from ..config import Config, data_dir
 from ..db import DB
 from ..indexer import Indexer
 from .common import STYLE, PreviewDialog, Runner, resource_path
+from .analyse import CasesPage, HydraulicsPage, IbaPage, SpecialistPage
 from .pages import (AssistantPage, DuplicatesPage, FoldersPage, LibraryPage, PhotosPage, RevisionsPage,
                     SearchPage, SettingsPage)
 
@@ -79,6 +80,8 @@ class IndexWorker(QThread):
                         self.indexer.embed_pending(quiet=True)
                 elif job[0] == "embed":
                     self.indexer.embed_pending()
+                elif job[0] == "classify":
+                    self.indexer.classify_existing()
             except Exception as e:
                 log.exception("indexing job failed")
                 self.message.emit(f"✘ Error: {e}")
@@ -177,6 +180,10 @@ class MainWindow(QMainWindow):
             ("search", "🔎   Keyword search", SearchPage(self, smart=False)),
             ("smart", "🧠   Smart search", SearchPage(self, smart=True)),
             ("assistant", "💬   AI assistant", AssistantPage(self)),
+            ("specialist", "🛠   Steel Specialist", SpecialistPage(self)),
+            ("iba", "📈   iba Analyzer", IbaPage(self)),
+            ("hydraulics", "🔧   Hydraulics", HydraulicsPage(self)),
+            ("cases", "📒   Lessons learned", CasesPage(self)),
             ("library", "🏷   Library & tags", LibraryPage(self)),
             ("revisions", "📐   Revisions", RevisionsPage(self)),
             ("photos", "🖼   Photos & OCR", PhotosPage(self)),
@@ -215,10 +222,11 @@ class MainWindow(QMainWindow):
 
         self.mode_changed()
         self.worker.start()
+        self.worker.enqueue(("classify",))
         if not selftest:
             self.watcher.start(cfg.enabled_folders())
             self.worker.enqueue(("scan",))
-        self.nav.setCurrentRow(0 if cfg.get("folders") else 7)
+        self.nav.setCurrentRow(0 if cfg.get("folders") else list(self.pages).index("folders"))
         if not cfg.get("folders") and not selftest:
             QTimer.singleShot(400, self._welcome)
 
