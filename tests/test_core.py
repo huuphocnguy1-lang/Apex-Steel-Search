@@ -28,7 +28,8 @@ class FakeAI:
             out.append([1.0 + sum(t.count(w) for w in c) for c in self.CONCEPTS] + [0.5])
         return out
 
-    def chat(self, messages):
+    def chat(self, messages, images=None):
+        self.last_images = images
         return "Bolts M24 grade 10.9, torque 1100 Nm [1]"
 
 
@@ -122,3 +123,29 @@ def test_duplicates_and_rescan(env):
 def test_diff():
     d = search.diff_texts("Base plate 35 mm. Grout 50 mm.", "Base plate 40 mm. Grout 50 mm.")
     assert ("del", "Base plate 35 mm.") in d and ("add", "Base plate 40 mm.") in d
+
+
+def test_dwg_retried_when_converter_installed(env):
+    db, cfg, ai, ix, tmp = env
+    dwg = tmp / "Projects" / "P-2401" / "D-2401-S-300_RevA.dwg"
+    dwg.write_bytes(b"AC1027 fake")
+    cfg["oda_path"] = str(tmp / "missing.exe")
+    ix.scan()
+    r = [x for x in db.library_rows() if x["name"] == dwg.name][0]
+    assert r["error"].startswith("DWG: install")
+    fake = tmp / "ODAFileConverter.exe"
+    fake.write_text("x")
+    cfg["oda_path"] = str(fake)
+    assert ix._retry(str(dwg), r["error"]) is True
+
+
+def test_assistant_with_attachment(env, tmp_path):
+    db, cfg, ai, ix, _ = env
+    note = tmp_path / "site_note.txt"
+    note.write_text("Stopper rod at 80 %, argon flow 5 l/min, mould level hunting.", encoding="utf-8")
+    from PIL import Image
+    img = tmp_path / "hmi.png"
+    Image.new("RGB", (64, 48), "red").save(img)
+    a = search.answer_with_files(db, ai, "", [], [str(note), str(img)], cfg)
+    assert a["sources"][0][2] == "site_note.txt" and a["sources"][0][1] is None
+    assert ai.last_images and len(ai.last_images) == 1

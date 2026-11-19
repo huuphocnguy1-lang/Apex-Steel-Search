@@ -6,11 +6,11 @@
 
 [Setup]
 AppId={{6F3A2C1E-8B4D-4E7A-9C21-5D0B7A1E3F42}
-AppName=Apex Steel Search
+AppName=Apex Steel Analyser
 AppVersion={#MyAppVersion}
 AppPublisher=Apex Steel
-DefaultDirName={autopf}\Apex Steel Search
-DefaultGroupName=Apex Steel Search
+DefaultDirName={autopf}\Apex Steel Analyser
+DefaultGroupName=Apex Steel Analyser
 DisableProgramGroupPage=yes
 OutputDir=..\Output
 OutputBaseFilename=ApexSteelSearch-Setup-{#MyAppVersion}
@@ -34,9 +34,14 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\dist\ApexSteelSearch\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
+[InstallDelete]
+; remove the old shortcut names from v0.1.x
+Type: files; Name: "{autodesktop}\Apex Steel Search.lnk"
+Type: files; Name: "{autoprograms}\Apex Steel Search.lnk"
+
 [Icons]
-Name: "{autoprograms}\Apex Steel Search"; Filename: "{app}\ApexSteelSearch.exe"
-Name: "{autodesktop}\Apex Steel Search"; Filename: "{app}\ApexSteelSearch.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Apex Steel Analyser"; Filename: "{app}\ApexSteelSearch.exe"
+Name: "{autodesktop}\Apex Steel Analyser"; Filename: "{app}\ApexSteelSearch.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ApexSteelSearch.exe"; Description: "{cm:LaunchProgram,Apex Steel Search}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\ApexSteelSearch.exe"; Description: "{cm:LaunchProgram,Apex Steel Analyser}"; Flags: nowait postinstall skipifsilent

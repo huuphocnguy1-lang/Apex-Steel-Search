@@ -38,6 +38,7 @@ class IndexWorker(QThread):
         self.pending = {}            # path -> time of last change (debounce for the watcher)
         self._stop = False
         self._cancel = False
+        self.is_busy = False
         self.indexer = Indexer(db, cfg, ai, log_fn=self.message.emit, progress=self.progress.emit,
                                should_stop=lambda: self._stop or self._cancel)
 
@@ -68,6 +69,7 @@ class IndexWorker(QThread):
             if job is None or job[0] == "noop":
                 continue
             self._cancel = False
+            self.is_busy = True
             self.busy.emit(True)
             try:
                 if job[0] == "scan":
@@ -80,6 +82,7 @@ class IndexWorker(QThread):
             except Exception as e:
                 log.exception("indexing job failed")
                 self.message.emit(f"✘ Error: {e}")
+            self.is_busy = False
             self.busy.emit(False)
             self.changed.emit()
 
@@ -328,8 +331,13 @@ class MainWindow(QMainWindow):
 
     def _on_busy(self, busy):
         self.bar.setVisible(busy)
-        if not busy:
-            self.statusBar().showMessage("Index up to date", 5000)
+        fp = self.pages["folders"]
+        if busy:
+            fp.state.setText("Working…")
+            fp.state.setStyleSheet("")
+        else:
+            fp.set_progress(1, 1, "")
+            self.statusBar().showMessage("✔ Finished — index up to date", 8000)
 
     def _on_progress(self, i, n, name):
         self.bar.setValue(int(i * 100 / n) if n else 100)

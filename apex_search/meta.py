@@ -83,7 +83,7 @@ def title_from(name: str, text: str, given: str = "") -> str:
 def dhash(img, size: int = 8) -> str:
     """64-bit difference hash of a PIL image (for 'find similar photos')."""
     g = img.convert("L").resize((size + 1, size))
-    px = list(g.getdata())
+    px = list(g.tobytes())
     bits = 0
     for row in range(size):
         for col in range(size):

@@ -18,6 +18,9 @@ DEFAULTS = {
     "cloud_api_key": "",
     "cloud_chat_model": "qwen-max",
     "cloud_embed_model": "text-embedding-v3",
+    # Models that understand pictures (used when a photo is attached in the chat)
+    "local_vision_model": "qwen2.5vl:7b",
+    "cloud_vision_model": "qwen-vl-max",
     # Which engine builds the smart-search index: "local" or "cloud"
     "embed_provider": "local",
     # Build smart index automatically after each scan (needs the AI engine running)

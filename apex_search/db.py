@@ -93,8 +93,8 @@ class DB:
             self.version += 1
         return True
 
-    def file_states(self) -> dict[str, tuple[float, int]]:
-        return {r["path"]: (r["mtime"], r["size"]) for r in self.q("SELECT path, mtime, size FROM files")}
+    def file_states(self) -> dict[str, tuple[float, int, str | None]]:
+        return {r["path"]: (r["mtime"], r["size"], r["error"]) for r in self.q("SELECT path, mtime, size, error FROM files")}
 
     def get(self, fid):
         return self.one("SELECT * FROM files WHERE id=?", (fid,))

@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/icon.png" width="96" alt="Apex Steel Search logo"></p>
+<p align="center"><img src="assets/icon.png" width="96" alt="Apex Steel Analyser logo"></p>
 
-<h1 align="center">Apex Steel Search</h1>
+<h1 align="center">Apex Steel Analyser</h1>
 <p align="center">Search and analyse your site documents (drawings, PDF, Word, Excel, emails and photos) on your Windows laptop. Everything works offline.</p>
 
 ---

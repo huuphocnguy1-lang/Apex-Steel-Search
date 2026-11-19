@@ -9,11 +9,29 @@ class AIError(Exception):
     pass
 
 
+# Local AI (Ollama) must never go through a system proxy/VPN
+_NO_PROXY = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def _is_local(url: str) -> bool:
+    return any(h in url for h in ("://localhost", "://127.0.0.1", "://[::1]"))
+
+
+def _get(url: str, timeout: int = 4) -> dict:
+    opener = _NO_PROXY if _is_local(url) else urllib.request.build_opener()
+    try:
+        with opener.open(url, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        raise AIError(f"Cannot reach {url}: {getattr(e, 'reason', e)}") from None
+
+
 def _post(url: str, payload: dict, headers: dict | None = None, timeout: int = 120) -> dict:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
+    opener = _NO_PROXY if _is_local(url) else urllib.request.build_opener()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with opener.open(req, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         body = e.read()[:400].decode("utf-8", "ignore")
@@ -74,16 +92,55 @@ class AIClient:
             raise AIError(f"Unexpected Ollama answer: {str(r)[:200]}")
         return r["embeddings"]
 
-    def chat(self, messages: list[dict]) -> str:
+    def chat(self, messages: list[dict], images: list[str] | None = None) -> str:
+        """images: base64 JPEG strings attached to the last user message (uses the vision model)."""
+        msgs = [dict(m) for m in messages]
         if self.online:
+            model = self.cfg.get("cloud_vision_model") if images else self.cfg["cloud_chat_model"]
+            if images:
+                msgs[-1]["content"] = [{"type": "text", "text": msgs[-1]["content"]}] + [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images]
             r = _post(self._cloud("/chat/completions"),
-                      {"model": self.cfg["cloud_chat_model"], "messages": messages, "temperature": 0.2},
-                      self._cloud_headers(), timeout=180)
+                      {"model": model, "messages": msgs, "temperature": 0.2},
+                      self._cloud_headers(), timeout=240)
             return r["choices"][0]["message"]["content"]
-        r = _post(self._ollama("/api/chat"),
-                  {"model": self.cfg["local_chat_model"], "messages": messages, "stream": False,
-                   "options": {"temperature": 0.2}}, timeout=600)
+        model = self.cfg.get("local_vision_model") if images else self.cfg["local_chat_model"]
+        if images:
+            msgs[-1]["images"] = images
+        try:
+            r = _post(self._ollama("/api/chat"),
+                      {"model": model, "messages": msgs, "stream": False, "options": {"temperature": 0.2}}, timeout=900)
+        except AIError as e:
+            if images and ("not found" in str(e) or "404" in str(e)):
+                raise AIError(f"The picture model '{model}' is not installed. Open cmd and run:  ollama pull {model}") from None
+            raise
         return r["message"]["content"]
+
+    def check_embed_ready(self) -> str:
+        """Quick check before building the smart index. Raises AIError with a clear, actionable message."""
+        if self.cfg.get("embed_provider") == "cloud":
+            if not self.online:
+                raise AIError("The smart index is set to use the cloud model, but the app is in Offline mode.\n"
+                              "Switch to Online, or choose 'Local (Ollama)' in Settings → Smart index.")
+            self._cloud_headers()
+            self.embed(["test"])
+            return f"cloud model {self.cfg.get('cloud_embed_model')}"
+        base = self.cfg.get("ollama_url", "http://localhost:11434").rstrip("/")
+        try:
+            tags = _get(base + "/api/tags")
+        except AIError:
+            raise AIError("Ollama is not running on this laptop.\n\n"
+                          "1. Install Ollama from https://ollama.com/download\n"
+                          "2. Open a terminal (cmd) and run:   ollama pull bge-m3\n"
+                          "3. Click 'Build smart index' again.") from None
+        names = [m.get("name", "") for m in tags.get("models", [])]
+        want = self.cfg.get("local_embed_model", "bge-m3")
+        if not any(n == want or n.split(":")[0] == want.split(":")[0] for n in names):
+            raise AIError(f"Ollama is running, but the model '{want}' is not installed.\n\n"
+                          f"Open a terminal (cmd) and run:   ollama pull {want}\n"
+                          f"Installed models: {', '.join(names) or 'none'}")
+        self.embed(["test"])
+        return f"local model {want}"
 
     def test(self) -> str:
         lines = []

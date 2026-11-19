@@ -230,25 +230,69 @@ def _gather_sources(db, ai, question: str, max_sources: int = 6, budget: int = 9
     return by_file
 
 
-def answer(db, ai, question: str, history: list[dict] | None = None) -> dict:
-    srcs = _gather_sources(db, ai, question)
-    if not srcs:
+def prepare_attachments(paths: list[str], cfg: dict) -> list[dict]:
+    """Reads attached files: text (with OCR for pictures/scans) + a resized JPEG for pictures."""
+    import base64
+    import io
+    import os
+    from .extract import IMAGE_EXTS, extract
+    out = []
+    for p in paths:
+        ext = os.path.splitext(p)[1].lower().lstrip(".")
+        ex = extract(p, cfg)
+        item = {"name": os.path.basename(p), "path": p, "text": ex.text or "", "image": None,
+                "note": ex.error}
+        if ext in IMAGE_EXTS:
+            try:
+                from PIL import Image, ImageOps
+                with Image.open(p) as im:
+                    im = ImageOps.exif_transpose(im).convert("RGB")
+                    im.thumbnail((1600, 1600))
+                    buf = io.BytesIO()
+                    im.save(buf, "JPEG", quality=85)
+                    item["image"] = base64.b64encode(buf.getvalue()).decode()
+            except Exception as e:
+                item["note"] = f"cannot read picture: {e}"
+        out.append(item)
+    return out
+
+
+def answer(db, ai, question: str, history: list[dict] | None = None, attachments: list[dict] | None = None) -> dict:
+    attachments = attachments or []
+    q = question.strip() or "Analyse the attached file(s): describe what they show and any problem you see."
+    probe = q + " " + " ".join(a["text"][:300] for a in attachments)
+    srcs = _gather_sources(db, ai, probe)
+    if not srcs and not attachments:
         return {"text": "I could not find anything about that in your indexed documents. "
                         "Check that the folder is added in **Folders & index**.", "sources": []}
-    sources, blocks = [], []
-    for n, (fid, texts) in enumerate(srcs.items(), 1):
+    sources, blocks, n = [], [], 0
+    for a in attachments:
+        n += 1
+        body = a["text"][:6000] if a["text"] else ("(picture attached — see image)" if a["image"] else "(no text found)")
+        blocks.append(f"[{n}] ATTACHED BY USER: {a['name']}\n{body}")
+        sources.append((n, None, a["name"], a["path"]))
+    for fid, texts in srcs.items():
         r = db.get(fid)
         if r is None:
             continue
+        n += 1
         info = ", ".join(x for x in (r["project"], r["dno"] and f"{r['dno']} Rev {r['rev']}", r["lang"]) if x)
         blocks.append(f"[{n}] {r['name']} ({info})\n" + "\n…\n".join(texts))
-        sources.append((n, fid, r["name"]))
-    msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
+        sources.append((n, fid, r["name"], r["path"]))
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT + (
+        " The user attached files marked ATTACHED BY USER: analyse them first, then relate them to the other sources."
+        " For pictures, describe what you see (equipment, damage, text, alarms) before giving causes and checks."
+        if attachments else "")}]
     for h in (history or [])[-4:]:
         msgs.append({"role": h["role"], "content": h["content"][:1500]})
-    msgs.append({"role": "user", "content": "SOURCES:\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION: {question}"})
-    text = ai.chat(msgs)
+    msgs.append({"role": "user", "content": "SOURCES:\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION: {q}"})
+    images = [a["image"] for a in attachments if a.get("image")]
+    text = ai.chat(msgs, images=images or None)
     return {"text": text, "sources": sources}
+
+
+def answer_with_files(db, ai, question, history, paths, cfg):
+    return answer(db, ai, question, history, prepare_attachments(paths, cfg) if paths else None)
 
 
 # ------------------------------------------------------------------ revisions diff

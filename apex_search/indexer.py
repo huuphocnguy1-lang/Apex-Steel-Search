@@ -63,6 +63,16 @@ class Indexer:
                 best = r
         return best
 
+    def _retry(self, path: str, error: str | None) -> bool:
+        """Re-read a file that failed only because a tool was missing, once the tool is available."""
+        if not error:
+            return False
+        if path.lower().endswith(".dwg") and error.startswith("DWG: install"):
+            return os.path.isfile(self.cfg.get("oda_path") or "")
+        if "not installed" in error:
+            return True
+        return False
+
     # ------------------------------------------------------------ scan
     def scan(self, roots: list[str] | None = None) -> dict:
         roots = roots if roots is not None else self.cfg.enabled_folders()
@@ -77,7 +87,7 @@ class Indexer:
                     return {"stopped": True}
                 found.add(p)
                 k = known.get(p)
-                if not k or abs((k[0] or 0) - st.st_mtime) > 1 or k[1] != st.st_size:
+                if not k or abs((k[0] or 0) - st.st_mtime) > 1 or k[1] != st.st_size or self._retry(p, k[2]):
                     todo.append((p, root))
         removed = 0
         norm_roots = [os.path.normcase(os.path.abspath(r)) + os.sep for r in roots]

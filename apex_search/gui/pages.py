@@ -215,6 +215,9 @@ class SearchPage(Page):
 
 
 # ================================================================== assistant
+IMG_FILTER = "Pictures and documents (*.jpg *.jpeg *.png *.bmp *.tif *.tiff *.webp *.heic *.pdf *.docx *.xlsx *.xlsm *.csv *.txt *.pptx *.msg *.eml *.dxf *.dwg);;All files (*.*)"
+
+
 class AssistantPage(Page):
     SUGGEST = ["What bolt grade and torque for the crane girder connections?",
                "What changed in the latest revision of the column base drawing?",
@@ -223,6 +226,7 @@ class AssistantPage(Page):
 
     def __init__(self, ctx):
         super().__init__(ctx)
+        self.setAcceptDrops(True)
         top = QHBoxLayout()
         top.addWidget(h1("AI assistant"))
         top.addStretch()
@@ -232,8 +236,8 @@ class AssistantPage(Page):
         clr.clicked.connect(self.clear)
         top.addWidget(clr)
         self.v.addLayout(top)
-        self.v.addWidget(sub("Ask questions about your documents. Every answer lists its sources — click [1], [2]… "
-                             "to open the exact file."))
+        self.v.addWidget(sub("Ask questions about your documents, or attach pictures and files (📎, drag & drop, or paste a "
+                             "screenshot). Every answer lists its sources — click [1], [2]… to open the file."))
         self.view = QTextBrowser()
         self.view.setOpenLinks(False)
         self.view.anchorClicked.connect(self.on_link)
@@ -245,18 +249,78 @@ class AssistantPage(Page):
             chips.addWidget(b)
         chips.addStretch()
         self.v.addLayout(chips)
+        self.att_row = QHBoxLayout()
+        self.att_box = QWidget()
+        self.att_box.setLayout(self.att_row)
+        self.att_row.setContentsMargins(0, 0, 0, 0)
+        self.v.addWidget(self.att_box)
         row = QHBoxLayout()
+        attach = button("📎", ghost=True, tip="Attach pictures or documents")
+        attach.clicked.connect(self.pick_files)
+        paste = button("📋", ghost=True, tip="Paste a screenshot / picture from the clipboard")
+        paste.clicked.connect(self.paste_image)
         self.inp = QLineEdit()
-        self.inp.setPlaceholderText("Ask a question about your documents…")
+        self.inp.setPlaceholderText("Ask a question, or attach a photo / document and press Send…")
         self.inp.returnPressed.connect(self.on_send)
         self.send = button("Send")
         self.send.clicked.connect(self.on_send)
+        row.addWidget(attach)
+        row.addWidget(paste)
         row.addWidget(self.inp, 1)
         row.addWidget(self.send)
         self.v.addLayout(row)
-        self.history, self.parts, self.busy = [], [], False
+        self.history, self.parts, self.busy, self.files = [], [], False, []
+        self.paths_by_id = {}
         self.clear()
+        self._refresh_attachments()
 
+    # ---------------- attachments
+    def pick_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "Attach pictures or documents", "", IMG_FILTER)
+        self.add_files(paths)
+
+    def add_files(self, paths):
+        for p in paths:
+            if p and os.path.isfile(p) and p not in self.files:
+                self.files.append(os.path.normpath(p))
+        self.files = self.files[:6]
+        self._refresh_attachments()
+
+    def paste_image(self):
+        from PySide6.QtWidgets import QApplication
+        import tempfile
+        img = QApplication.clipboard().image()
+        if img.isNull():
+            QMessageBox.information(self, "Paste", "No picture in the clipboard. Take a screenshot first (Win+Shift+S).")
+            return
+        path = os.path.join(tempfile.gettempdir(), f"apex_screenshot_{len(self.files) + 1}_{os.getpid()}.png")
+        img.save(path, "PNG")
+        self.add_files([path])
+
+    def _refresh_attachments(self):
+        while self.att_row.count():
+            w = self.att_row.takeAt(0).widget()
+            if w:
+                w.deleteLater()
+        for p in self.files:
+            b = button(f"📄 {os.path.basename(p)}  ✕", chip=True, tip="Remove")
+            b.clicked.connect(lambda _=False, x=p: self._remove(x))
+            self.att_row.addWidget(b)
+        self.att_row.addStretch()
+        self.att_box.setVisible(bool(self.files))
+
+    def _remove(self, p):
+        self.files = [x for x in self.files if x != p]
+        self._refresh_attachments()
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+
+    def dropEvent(self, e):
+        self.add_files([u.toLocalFile() for u in e.mimeData().urls() if u.isLocalFile()])
+
+    # ---------------- chat
     def refresh(self):
         self.model.setText("Model: " + self.ctx.ai.chat_model_label())
 
@@ -266,8 +330,9 @@ class AssistantPage(Page):
 
     def clear(self):
         self.history, self.parts = [], []
-        self.render('<p style="color:#5F6D7E">Ask anything about your indexed documents. '
-                    'Offline answers use the local model (Ollama); Online uses the cloud model.</p>')
+        self.render('<p style="color:#5F6D7E">Ask anything about your indexed documents, or attach a photo of a defect, '
+                    'an HMI alarm screen, a drawing or a report. Offline answers use the local models (Ollama); '
+                    'Online uses the cloud models.</p>')
 
     def render(self, extra=""):
         self.view.setHtml("".join(self.parts) + extra)
@@ -276,29 +341,51 @@ class AssistantPage(Page):
 
     def on_send(self):
         t = self.inp.text().strip()
-        if t:
+        if t or self.files:
             self.inp.clear()
             self.ask(t)
 
     def ask(self, q):
         if self.busy:
             return
+        files, self.files = list(self.files), []
+        self._refresh_attachments()
         self.busy = True
         self.send.setEnabled(False)
+        att_html = ""
+        for p in files:
+            ext = os.path.splitext(p)[1].lower().lstrip(".")
+            if ext in ("jpg", "jpeg", "png", "bmp", "webp", "tif", "tiff"):
+                att_html += f'<img src="{QUrl.fromLocalFile(p).toString()}" width="180"><br>'
+            else:
+                att_html += f"📄 {html.escape(os.path.basename(p))}<br>"
+        shown = html.escape(q) if q else "<i>(analyse the attached file)</i>"
         self.parts.append(f'<table width="100%" style="margin:6px 0"><tr><td width="25%"></td>'
-                          f'<td style="background:#1F4E79;color:white;padding:8px 12px">{html.escape(q)}</td></tr></table>')
-        self.render('<p style="color:#5F6D7E">🤖 Thinking… (' + html.escape(self.ctx.ai.chat_model_label()) + ')</p>')
-        self._q = q
-        self.ctx.runner.run(search.answer, (self.ctx.db, self.ctx.ai, q, list(self.history)), self.on_answer, self.on_error)
+                          f'<td style="background:#1F4E79;color:white;padding:8px 12px">{att_html}{shown}</td></tr></table>')
+        model = self.ctx.ai.chat_model_label()
+        if any(os.path.splitext(p)[1].lower() in (".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff") for p in files):
+            model = (self.ctx.cfg.get("cloud_vision_model") if self.ctx.ai.online else self.ctx.cfg.get("local_vision_model")) + " (pictures)"
+        self.render('<p style="color:#5F6D7E">🤖 ' + ("Reading the attached files and thinking…" if files else "Thinking…")
+                    + f" ({html.escape(model)})</p>")
+        self._q = q or "(attached files)"
+        self.ctx.runner.run(search.answer_with_files,
+                            (self.ctx.db, self.ctx.ai, q, list(self.history), files, dict(self.ctx.cfg)),
+                            self.on_answer, self.on_error)
 
     def on_answer(self, res):
         self.busy = False
         self.send.setEnabled(True)
         body = md_to_html(res["text"])
-        ids = {str(n): fid for n, fid, _ in res["sources"]}
+        ids = {}
+        for src in res["sources"]:
+            n, fid, name, path = src
+            key = str(fid) if fid else f"p{len(self.paths_by_id)}"
+            if not fid:
+                self.paths_by_id[key] = path
+            ids[str(n)] = key
         body = re.sub(r'href="cite:(\d+)"', lambda m: f'href="src:{ids.get(m.group(1), 0)}"', body)
-        src = "".join(f'<div><a href="src:{fid}" style="color:#5F6D7E;text-decoration:none">[{n}] {html.escape(name)}</a></div>'
-                      for n, fid, name in res["sources"])
+        src = "".join(f'<div><a href="src:{ids[str(n)]}" style="color:#5F6D7E;text-decoration:none">[{n}] '
+                      f'{"📎 " if not fid else ""}{html.escape(name)}</a></div>' for n, fid, name, path in res["sources"])
         self.parts.append(f'<table width="100%" style="margin:6px 0"><tr><td style="background:white;border:1px solid #E1E6ED;padding:10px 12px">'
                           f'<span style="color:#5F6D7E;font-size:8.5pt">🤖 Apex AI · {html.escape(self.ctx.ai.chat_model_label())}</span><br>{body}'
                           + (f'<hr><span style="font-size:8.5pt"><b>Sources</b>{src}</span>' if src else "") +
@@ -310,19 +397,24 @@ class AssistantPage(Page):
         self.busy = False
         self.send.setEnabled(True)
         self.parts.append(f'<p style="color:#C0392B">⚠ {html.escape(msg)}<br><span style="color:#5F6D7E">'
-                          'Offline: install Ollama and run “ollama pull qwen2.5:7b” and “ollama pull bge-m3”. '
-                          'Online: set your API key in Settings.</span></p>')
+                          'Offline: install Ollama and run “ollama pull qwen2.5:7b” (text) and “ollama pull qwen2.5vl:7b” '
+                          '(pictures). Online: set your API key in Settings.</span></p>')
         self.render()
 
     def on_link(self, url: QUrl):
         s = url.toString()
-        if s.startswith("src:"):
-            try:
-                fid = int(s[4:])
-            except ValueError:
-                return
-            if fid:
-                self.ctx.show_file(fid)
+        if not s.startswith("src:"):
+            return
+        key = s[4:]
+        if key in self.paths_by_id:
+            open_file(self.paths_by_id[key])
+            return
+        try:
+            fid = int(key)
+        except ValueError:
+            return
+        if fid:
+            self.ctx.show_file(fid)
 
 
 # ================================================================== library
@@ -776,7 +868,7 @@ class FoldersPage(Page):
         self.b_scan.clicked.connect(lambda: self.ctx.worker.enqueue(("scan",)))
         self.b_smart = button("🧠 Build smart index", ghost=True,
                               tip="Creates the AI index used by Smart search and the assistant (needs Ollama or cloud)")
-        self.b_smart.clicked.connect(lambda: self.ctx.worker.enqueue(("embed",)))
+        self.b_smart.clicked.connect(self.start_smart)
         self.b_stop = button("Stop", ghost=True)
         self.b_stop.clicked.connect(self.ctx.worker.cancel)
         for b in (self.b_scan, self.b_smart, self.b_stop):
@@ -786,7 +878,7 @@ class FoldersPage(Page):
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
-        self.state = sub("Idle")
+        self.state = sub("✔ Index up to date")
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(3000)
@@ -821,12 +913,45 @@ class FoldersPage(Page):
                            cell(f"{s['vectors']}/{s['chunks']}", "smart index passages") +
                            cell(f"{s['db_mb']} MB", "index size") + cell(s["errors"], "with notes") + "</tr></table>")
 
+    def start_smart(self):
+        self.b_smart.setEnabled(False)
+        self.state.setText("Checking the AI engine…")
+        self.append_log("Checking the AI engine for the smart index…")
+        self.ctx.runner.run(self.ctx.ai.check_embed_ready, (), self.on_smart_ok, self.on_smart_error)
+
+    def on_smart_ok(self, which):
+        self.b_smart.setEnabled(True)
+        s = self.ctx.db.stats()
+        todo = s["chunks"] - s["vectors"]
+        busy = getattr(self.ctx.worker, "is_busy", False)
+        self.append_log(f"✔ AI engine ready ({which}). Smart index: {todo} passages to process"
+                        + (" — will start when the current indexing finishes." if busy else "."))
+        self.state.setText("Smart index queued" if busy else "Building smart index…")
+        if todo > 20000:
+            QMessageBox.information(self, "Smart index",
+                                    f"{todo:,} passages to process.\n\nThis runs in the background and can take "
+                                    "1–3 hours on a laptop without a graphics card (much faster with one).\n"
+                                    "You can keep using the app; it continues next time if you close it.")
+        self.ctx.worker.enqueue(("embed",))
+
+    def on_smart_error(self, msg):
+        self.b_smart.setEnabled(True)
+        self.state.setText("Smart index not started")
+        self.append_log("✘ Smart index not started: " + msg.replace("AIError: ", "").split("\n")[0])
+        QMessageBox.warning(self, "Smart index — AI engine needed", msg.replace("AIError: ", ""))
+
     def append_log(self, msg):
         self.log.appendPlainText(msg)
 
     def set_progress(self, i, n, name):
         self.bar.setValue(int(i * 100 / n) if n else 100)
-        self.state.setText(f"{i}/{n}  {name}" if name else "Idle")
+        if name:
+            self.state.setText(f"{i:,}/{n:,}  {name}")
+            self.state.setStyleSheet("")
+        else:
+            import datetime
+            self.state.setText(f"✔ Finished — index up to date ({datetime.datetime.now():%H:%M})")
+            self.state.setStyleSheet("color:#1E8E5A;font-weight:600")
 
     def _save_folders(self):
         self.ctx.cfg.save()
