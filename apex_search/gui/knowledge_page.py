@@ -49,8 +49,9 @@ class KnowledgePage(Page):
         opt.addWidget(self.per)
         opt.addWidget(QLabel("Search engine"))
         self.engine = QComboBox()
-        for k, l in (("auto", "Auto (Bing → Bing China → DuckDuckGo)"), ("bing", "Bing"), ("bing_cn", "Bing China"),
-                     ("ddg", "DuckDuckGo")):
+        for k, l in (("auto", "Auto (Bing International → Bing → DuckDuckGo → Baidu)"),
+                     ("bing_en", "Bing International (works in China)"), ("bing", "Bing"), ("ddg", "DuckDuckGo"),
+                     ("baidu", "Baidu")):
             self.engine.addItem(l, k)
         opt.addWidget(self.engine, 1)
         lv.addLayout(opt)

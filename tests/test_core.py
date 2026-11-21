@@ -296,31 +296,45 @@ def test_knowledge_learn_with_fake_web(tmp_path, monkeypatch):
     monkeypatch.setenv("APEX_SEARCH_HOME", str(tmp_path))
     from apex_search import knowledge
     page = ("<html><title>Pendulum shear basics</title><body><p>" +
-            "The pendulum shear cuts the transfer bar; knife clearance and cut timing matter. " * 40 + "</p></body></html>")
-    offtopic = "<html><title>Shoes</title><body><p>" + "Buy cheap shoes today. " * 200 + "</p></body></html>"
-    bing = ('<li class="b_algo"><h2><a href="https://example.com/ps">x</a></h2></li>'
-            '<li class="b_algo"><h2><a href="https://shop.example/shoes">y</a></h2></li>'
-            '<li class="b_algo"><h2><a href="https://www.youtube.com/watch?v=1">z</a></h2></li>')
+            "The pendulum shear cuts the transfer bar in hot rolling; knife clearance and cut timing matter. " * 40 +
+            "</p></body></html>")
+    junk_serp = ('<li class="b_algo"><h2><a href="https://fabricsnap.com/">AI fabric identifier</a></h2><p>Find a fabric by photo</p></li>'
+                 '<li class="b_algo"><h2><a href="https://www.yahoo.com/news/">Yahoo News</a></h2><p>Latest news</p></li>')
+    good_serp = ('<li class="b_algo"><h2><a href="https://example.com/ps">Pendulum shear in hot rolling mills</a></h2>'
+                 '<p>How the pendulum shear cuts the transfer bar</p></li>'
+                 '<li class="b_algo"><h2><a href="https://www.youtube.com/watch?v=1">Pendulum shear video</a></h2><p>shear</p></li>')
+    seen = []
 
     def fake_get(url, limit=15_000_000, timeout=20):
-        if "bing.com/search" in url:
-            return bing.encode(), "text/html"
+        seen.append(url)
+        if "cn.bing.com/search" in url:        # 'Bing International' gives junk (like in the field)
+            return junk_serp.encode(), "text/html"
+        if "www.bing.com/search" in url:
+            return good_serp.encode(), "text/html"
         if url.endswith("/ps"):
             return page.encode(), "text/html; charset=utf-8"
-        if "shoes" in url:
-            return offtopic.encode(), "text/html"
         raise OSError("blocked")
     monkeypatch.setattr(knowledge, "_get", fake_get)
     logs = []
-    n = knowledge.learn(["PS"], per_query=2, wikipedia=False, log=logs.append)
-    assert n == 1                                    # same page found by every query → saved once
+    n = knowledge.learn(["PS"], per_query=2, wikipedia=True, log=logs.append)
+    assert n == 1                                    # junk never fetched; same good page saved once
+    assert not any("fabricsnap" in u or "yahoo" in u for u in seen if "search" not in u)
+    assert any("none about this topic" in l for l in logs)
+    assert sum("Wikipedia not reachable" in l for l in logs) == 1   # dead source tried only once
     m = knowledge.load_manifest()
     e = list(m.values())[0]
-    assert e["topic"] == "PS" and os.path.exists(e["file"]) and "Source: https://example.com/ps" in open(e["file"], encoding="utf-8").read()
+    assert e["topic"] == "PS" and "Source: https://example.com/ps" in open(e["file"], encoding="utf-8").read()
     assert knowledge.counts_by_topic() == {"PS": 1}
-    assert any("off-topic" in l for l in logs)
     knowledge.remove_source(list(m)[0])
     assert knowledge.load_manifest() == {} and not os.path.exists(e["file"])
+
+
+def test_result_relevance():
+    from apex_search import knowledge as k
+    q = "thin slab caster funnel mould oscillation"
+    assert not k.result_relevant(q, "RainSFM wiki fandom")
+    assert not k.result_relevant(q, "AI fabric identifier find a fabric by photo")
+    assert k.result_relevant(q, "Funnel mould for thin slab casters: oscillation and heat flux")
 
 
 def test_answer_labels_sources_by_origin(tmp_path, monkeypatch):

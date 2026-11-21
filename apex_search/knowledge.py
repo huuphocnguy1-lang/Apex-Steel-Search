@@ -216,53 +216,131 @@ def _clean_link(u: str) -> str | None:
     return u
 
 
-def search_bing(query: str, n: int = 6, cn: bool = False) -> list[str]:
-    host = "cn.bing.com" if cn else "www.bing.com"
-    data, _ = _get(f"https://{host}/search?q={urllib.parse.quote(query)}&setlang=en&count=15", timeout=15)
-    page = data.decode("utf-8", "ignore")
-    links = re.findall(r'<li class="b_algo".*?<h2[^>]*>\s*<a[^>]+href="([^"]+)"', page, flags=re.S)
+# ------------------------------------------------------------------ search engines (v0.5.1)
+STOP = {"with", "from", "that", "this", "what", "when", "which", "into", "your", "their", "causes", "cause", "control",
+        "system", "process", "explained", "guide", "basics", "technology", "procedure"}
+
+# trusted technical sites per pack (one extra 'site:' search per pack)
+TRUSTED = {
+    "steel": ["ispatguru.com", "primetals.com", "sms-group.com", "danieli.com", "steeltimesint.com", "aist.org",
+              "worldsteel.org", "millennium-steel.com"],
+    "hyd": ["hydraulicspneumatics.com", "powermotiontech.com", "machinerylubrication.com", "boschrexroth.com",
+            "moog.com", "parker.com", "hydac.com", "womackmachine.com"],
+}
+
+
+def _words(q: str) -> list[str]:
+    return [w for w in re.findall(r"[a-z0-9]{4,}", q.lower()) if w not in STOP]
+
+
+def result_relevant(query: str, text: str) -> bool:
+    """A search result (title + snippet) must share most of the query's significant words (prefix match)."""
+    ws = _words(query)
+    if not ws:
+        return True
+    t = text.lower()
+    hits = sum(1 for w in ws if w[:5] in t)
+    return hits >= max(2, (len(ws) + 1) // 2) if len(ws) >= 2 else hits >= 1
+
+
+def _strip_tags(s: str) -> str:
+    return html.unescape(re.sub(r"<[^>]+>", " ", s or ""))
+
+
+def _bing_results(page: str):
     out = []
-    for u in links:
-        u = _clean_link(u)
-        if u and u not in out:
-            out.append(u)
-    return out[:n]
+    for blk in page.split('<li class="b_algo"')[1:]:
+        m = re.search(r'<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', blk, flags=re.S)
+        if not m:
+            continue
+        snip = re.search(r'<p[^>]*>(.*?)</p>', blk, flags=re.S)
+        out.append((m.group(1), _strip_tags(m.group(2)), _strip_tags(snip.group(1) if snip else "")))
+    return out
 
 
-def search_ddg(query: str, n: int = 6) -> list[str]:
+def search_bing(query: str, n: int = 6, cn: bool = False, intl: bool = False) -> list[tuple]:
+    if cn:   # Bing China; ensearch=1 = international (English) results — works inside mainland China
+        url = f"https://cn.bing.com/search?q={urllib.parse.quote(query)}&ensearch={1 if intl else 0}&setlang=en&count=15"
+    else:
+        url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}&setlang=en&cc=US&count=15"
+    data, _ = _get(url, timeout=15)
+    return _bing_results(data.decode("utf-8", "ignore"))
+
+
+def search_ddg(query: str, n: int = 6) -> list[tuple]:
     data, _ = _get("https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query), timeout=15)
     page = data.decode("utf-8", "ignore")
     out = []
-    for u in re.findall(r'class="result__a"[^>]+href="([^"]+)"', page):
-        u = _clean_link(u)
-        if u and u not in out:
-            out.append(u)
-    return out[:n]
+    for m in re.finditer(r'class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>(.*?)(?=class="result__a"|$)', page, flags=re.S):
+        snip = re.search(r'class="result__snippet"[^>]*>(.*?)</a>', m.group(3), flags=re.S)
+        out.append((m.group(1), _strip_tags(m.group(2)), _strip_tags(snip.group(1) if snip else "")))
+    return out
+
+
+def search_baidu(query: str, n: int = 6) -> list[tuple]:
+    data, _ = _get("https://www.baidu.com/s?wd=" + urllib.parse.quote(query) + "&rn=15", timeout=15)
+    page = data.decode("utf-8", "ignore")
+    out = []
+    for m in re.finditer(r'<h3[^>]*>\s*<a[^>]+href="(https?://www\.baidu\.com/link\?url=[^"]+)"[^>]*>(.*?)</a>', page, flags=re.S):
+        out.append((m.group(1), _strip_tags(m.group(2)), ""))
+    return out
+
+
+def _resolve(u: str) -> str | None:
+    """Baidu result links are redirects: follow them to the real page."""
+    if "baidu.com/link?" not in u:
+        return u
+    try:
+        with _open(u, timeout=10) as r:
+            return r.geturl()
+    except Exception:
+        return None
 
 
 def search_wikipedia(query: str, n: int = 2) -> list[str]:
     data, _ = _get("https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=%d&srsearch=%s"
-                   % (n, urllib.parse.quote(query)), timeout=15)
+                   % (n, urllib.parse.quote(query)), timeout=10)
     hits = json.loads(data.decode("utf-8")).get("query", {}).get("search", [])
     return ["https://en.wikipedia.org/wiki/" + urllib.parse.quote(h["title"].replace(" ", "_")) for h in hits]
 
 
+DEAD: set = set()   # engines found unreachable during the current learning run (skipped afterwards)
+
+ENGINES = {"bing_en": "Bing International (cn.bing.com, English)", "bing": "Bing (www.bing.com)",
+           "ddg": "DuckDuckGo", "baidu": "Baidu"}
+
+
 def web_search(query: str, n: int = 4, engine: str = "auto", log=None) -> list[str]:
-    """Search the web. 'auto' tries Bing, then Bing China (works in mainland China), then DuckDuckGo."""
-    order = {"auto": ["bing", "bing_cn", "ddg"], "bing": ["bing"], "bing_cn": ["bing_cn"], "ddg": ["ddg"]}.get(engine, ["bing"])
-    last = None
+    """Returns only results whose title / snippet really match the query. Tries the next engine when an engine
+    is blocked OR returns unrelated results (common in mainland China)."""
+    order = {"auto": ["bing_en", "bing", "ddg", "baidu"], "bing_cn": ["bing_en"]}.get(engine, [engine])
     for e in order:
+        if e in DEAD:
+            continue
         try:
-            res = (search_bing(query, n + 4) if e == "bing" else search_bing(query, n + 4, cn=True) if e == "bing_cn"
-                   else search_ddg(query, n + 4))
-            if res:
-                return res
+            res = (search_bing(query, n, cn=True, intl=True) if e == "bing_en" else search_bing(query, n) if e == "bing"
+                   else search_ddg(query, n) if e == "ddg" else search_baidu(query, n))
         except Exception as ex:
-            last = ex
+            DEAD.add(e)
             if log:
-                log(f"   search engine {e} not reachable ({type(ex).__name__})")
-    if last and log:
-        log("   no search engine reachable — check the internet connection / proxy")
+                log(f"   {ENGINES.get(e, e)}: not reachable ({type(ex).__name__}) → skipped for this run")
+            continue
+        good = []
+        for u, title, snip in res:
+            if not result_relevant(query, title + " " + snip + " " + u):
+                continue
+            u = _resolve(u) if e == "baidu" else u
+            u = _clean_link(u) if u else None
+            if u and u not in good:
+                good.append(u)
+        if good:
+            if log:
+                log(f"   {ENGINES.get(e, e)}: {len(good)} relevant result(s) of {len(res)}")
+            return good[:n]
+        if log:
+            log(f"   {ENGINES.get(e, e)}: {len(res)} results but none about this topic → next engine")
+    if log:
+        log("   no engine gave relevant results for this search")
     return []
 
 
@@ -338,10 +416,11 @@ def relevant(text: str, keywords: list[str]) -> bool:
 
 
 # ------------------------------------------------------------------ fetch & save one source
-def fetch_and_save(url: str, topic: str, keywords: list[str], manifest: dict, log=None) -> str | None:
+def fetch_and_save(url: str, topic: str, keywords: list[str], manifest: dict, log=None, query: str = "") -> str | None:
+    """Returns the saved path, None when the page is off-topic / too short, '' when already in the library."""
     key = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
     if key in manifest:
-        return None
+        return ""
     data, ctype = _get(url)
     folder = os.path.join(root(), "web", _slug(topic, 30))
     os.makedirs(folder, exist_ok=True)
@@ -363,7 +442,8 @@ def fetch_and_save(url: str, topic: str, keywords: list[str], manifest: dict, lo
             enc = m.group(1)
         page = data.decode(enc, "ignore")
         text, title = html_to_text(page)
-        if len(text) < MIN_CHARS or not relevant(text, keywords):
+        if len(text) < MIN_CHARS or (keywords and not relevant(text, keywords)) or \
+                (query and not result_relevant(re.sub(r"\(site:.*", "", query), text[:20000])):
             if log:
                 log(f"   skipped (too short or off-topic): {url[:90]}")
             return None
@@ -377,32 +457,39 @@ def fetch_and_save(url: str, topic: str, keywords: list[str], manifest: dict, lo
 
 
 # ------------------------------------------------------------------ main job
+def _site_query(topic: str, q: str) -> str:
+    sites = TRUSTED["hyd"] if topic.startswith("HYD") else TRUSTED["steel"]
+    return q + " (" + " OR ".join("site:" + d for d in sites[:6]) + ")"
+
+
 def learn(topics: list[str], custom: list[str] | None = None, urls: list[str] | None = None, per_query: int = 2,
           engine: str = "auto", wikipedia: bool = True, ai=None, ai_notes: bool = False,
           log=None, progress=None, should_stop=None) -> int:
     log = log or (lambda m: None)
     progress = progress or (lambda i, n, m: None)
     should_stop = should_stop or (lambda: False)
+    DEAD.clear()
     manifest = load_manifest()
     jobs = []  # (topic, keywords, query)
     for t in topics:
         if t in PACKS:
             label, kw, qs = PACKS[t]
             jobs += [(t, kw, q) for q in qs]
+            jobs.append((t, kw, _site_query(t, qs[0])))       # trusted technical websites
     for q in custom or []:
         q = q.strip()
         if q:
-            words = [w for w in re.findall(r"[A-Za-z]{4,}", q)][:5] or [q]
+            words = _words(q)[:5] or [q]
             jobs.append(("Custom", words, q))
-    saved, total = 0, len(jobs) + len(urls or [])
-    step = 0
+    saved, total, step = 0, len(jobs) + len(urls or []), 0
+    stats = {"saved": 0, "offtopic": 0, "refused": 0, "known": 0}
     for u in urls or []:
         if should_stop():
             break
         step += 1
         progress(step, total, "downloading your links")
         try:
-            p = fetch_and_save(u.strip(), "My links", ["the"], manifest, log)
+            p = fetch_and_save(u.strip(), "My links", [], manifest)
             if p:
                 saved += 1
                 log(f"✔ saved: {os.path.basename(p)}")
@@ -414,31 +501,40 @@ def learn(topics: list[str], custom: list[str] | None = None, urls: list[str] | 
             break
         step += 1
         progress(step, total, f"learning: {topic}")
-        log(f"🔎 {topic}: {q}")
-        links = web_search(q, per_query + 3, engine, log)
-        if wikipedia and topic != "Custom":
+        log(f"🔎 {topic}: {q[:110]}")
+        links = web_search(q, per_query + 4, engine, log)
+        if wikipedia and topic != "Custom" and "wiki" not in DEAD and "site:" not in q:
             try:
-                links = search_wikipedia(q, 1) + links
+                links = [u for u in search_wikipedia(q, 1)] + links
             except Exception:
-                pass
-        got = 0
+                DEAD.add("wiki")
+                log("   Wikipedia not reachable → skipped for this run")
+        got = off = ref = 0
         for u in links:
             if got >= per_query or should_stop():
                 break
             try:
-                p = fetch_and_save(u, topic, kw, manifest, log)
-            except Exception as e:
-                log(f"   ✘ {u[:80]} ({type(e).__name__})")
+                p = fetch_and_save(u, topic, kw, manifest, query=q)
+            except Exception:
+                ref += 1
                 continue
             if p:
                 got += 1
-                saved += 1
-                log(f"   ✔ {os.path.basename(p)}")
+                log(f"   ✔ saved: {os.path.basename(p)}")
+            elif p is None:
+                off += 1
+        saved += got
+        stats["saved"] += got
+        stats["offtopic"] += off
+        stats["refused"] += ref
+        if not got:
+            log(f"   nothing new saved ({off} off-topic, {ref} sites refused the download)")
         save_manifest(manifest)
     if ai_notes and ai is not None:
         saved += write_ai_notes(ai, topics, custom, log, should_stop)
     save_manifest(manifest)
-    log(f"📚 Learning finished: {saved} new source(s). They are now being indexed and digested.")
+    log(f"📚 Learning finished: {saved} new source(s) saved · {stats['offtopic']} pages rejected as off-topic · "
+        f"{stats['refused']} sites refused. Indexing and digesting now…")
     return saved
 
 

@@ -33,7 +33,7 @@ The AI is a specialist in **ESP lines, hydraulics and the steel process**.
   glossary.
 - **📚 Knowledge page → 🌐 Learn from web**: tick topic packs (ESP, Caster, HRM, PS, IDH, FM, cooling, coilers,
   hydraulics…) or type your own topics / links. Pages and PDFs are saved with their source link in the knowledge
-  folder, then digested (smart index + summaries). Search engine Auto = Bing → Bing China → DuckDuckGo.
+  folder, then digested (smart index + summaries). Search engine Auto = Bing International (cn.bing.com English, works in China) → Bing → DuckDuckGo → Baidu; results that do not match the topic are rejected before download.
 - **Source priority in every answer**: 🏭 your plant documents → 📒 lessons learned → 📘 built-in notes → 🌐 web → 🤖 AI notes.
 - Put your own manuals in `knowledge\my_notes` (📁 Open folder) — they count as plant documents.
 - Steel Specialist areas: ESP, Caster, HRM/RM, Pendulum shear, IDH/descaler, FM, Cooling, HSS & coilers, Hydraulics, POR.
