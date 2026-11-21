@@ -25,11 +25,17 @@ def file_hash(path: str, size: int) -> str:
 
 
 class Indexer:
-    def __init__(self, db, cfg, ai=None, log_fn=None, progress=None, should_stop=None):
+    def __init__(self, db, cfg, ai=None, log_fn=None, progress=None, should_stop=None, paused=None):
         self.db, self.cfg, self.ai = db, cfg, ai
         self.log = log_fn or (lambda m: log.info(m))
         self.progress = progress or (lambda i, n, msg: None)
         self.should_stop = should_stop or (lambda: False)
+        self.paused = paused or (lambda: False)
+
+    def _wait_if_paused(self):
+        """Background AI work gives way while you are asking a question (or using the laptop at night)."""
+        while self.paused() and not self.should_stop():
+            time.sleep(1.0)
 
     # ------------------------------------------------------------ walking
     def _excluded(self, name: str) -> bool:
@@ -154,6 +160,44 @@ class Indexer:
         self.log(f"{'⚠' if ex.error else '✓'} {name} ({dt:.1f} s){note}")
         return True
 
+    # ------------------------------------------------------------ night analysis: pre-summaries
+    SUMMARY_SYSTEM = ("You summarise steel-plant documents for engineers. Write at most 90 words in English: what the "
+                      "document is and its main content. Then one line starting with 'Key facts:' listing equipment, "
+                      "tags, values with units, problems and dates found in the text. Use only the given text.")
+
+    def summarize_pending(self, folders: list[str]) -> int:
+        if self.ai is None or not folders:
+            return 0
+        done0, total = self.db.count_to_summarise(folders)
+        if total <= done0:
+            self.log(f"Night analysis: all {total} documents of the selected folders are already summarised.")
+            return 0
+        self.log(f"Night analysis: {total - done0} documents to read and summarise…")
+        done, t0 = 0, time.time()
+        while not self.should_stop():
+            rows = self.db.files_to_summarise(folders, 20)
+            if not rows:
+                break
+            for r in rows:
+                if self.should_stop():
+                    break
+                self._wait_if_paused()
+                body = (r["body"] or "")[:6000]
+                msgs = [{"role": "system", "content": self.SUMMARY_SYSTEM},
+                        {"role": "user", "content": f"Document: {r['name']}\n\n{body}"}]
+                try:
+                    s = self.ai.chat(msgs, deep=False)
+                except Exception as e:
+                    self.log(f"Night analysis paused: {e}")
+                    return done
+                self.db.save_summary(r["id"], (s or "").strip()[:1500], self.ai.chat_model_label())
+                done += 1
+                rate = (time.time() - t0) / done
+                left = total - done0 - done
+                self.progress(done0 + done, total, f"summarising · about {left * rate / 3600:.1f} h left")
+        self.log(f"Night analysis: {done} document(s) summarised.")
+        return done
+
     def classify_existing(self) -> int:
         """Gives a drawing type to files indexed by older versions, from the stored text (files are not re-read)."""
         done = 0
@@ -194,6 +238,7 @@ class Indexer:
         self.log(f"Building smart index: {total} passages with {model}…")
         done, bs = 0, self.ai.embed_batch_size()
         while not self.should_stop():
+            self._wait_if_paused()
             rows = self.db.pending_chunks(bs)
             if not rows:
                 break

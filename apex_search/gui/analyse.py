@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QButtonGroup, QComboBox, QDial
                                QTableWidgetItem, QTabWidget, QTextBrowser, QVBoxLayout, QWidget)
 
 from .. import hydraulics, iba, specialist
-from .common import button, h1, md_to_html, sub
+from .common import TokenStream, button, h1, hold_background, md_to_html, sub
 from .pages import AssistantPage, Page, export_rows_xlsx
 
 AREA_NAMES = dict(specialist.AREAS)
@@ -700,12 +700,23 @@ class IbaPage(Page):
         self.b_ai.setEnabled(False)
         self.ai_out.setHtml("<p style='color:#5F6D7E'>🤖 Reading the events and your documents…</p>")
         q = "Explain this recording: which signal moved first, the sequence of events, the most likely root cause and what to check."
-        self.ctx.runner.run(specialist.specialist_answer,
+        import functools
+        self._live = ""
+        self._stream = TokenStream(self)
+        self._stream.token.connect(self._on_ai_token)
+        hold_background(self.ctx, True)
+        self.ctx.runner.run(functools.partial(specialist.specialist_answer, on_token=self._stream.token.emit),
                             (self.ctx.db, self.ctx.ai, self.area.currentData(), q, [], None, self.context()),
                             self.on_ai, self.on_ai_error)
 
+    def _on_ai_token(self, t):
+        self._live += t
+        if len(self._live) % 40 < len(t) or t.endswith("\n"):   # throttle redraws
+            self.ai_out.setHtml(md_to_html(self._live) + "▌")
+
     def on_ai(self, res):
         import re
+        hold_background(self.ctx, False)
         self.b_ai.setEnabled(True)
         body = md_to_html(res["text"])
         ids = {str(n): (fid or 0) for n, fid, name, path in res["sources"]}
@@ -714,6 +725,7 @@ class IbaPage(Page):
         self.ai_out.setHtml(body + (f"<hr><span style='font-size:8.5pt;color:#5F6D7E'><b>Sources</b>{src}</span>" if src else ""))
 
     def on_ai_error(self, msg):
+        hold_background(self.ctx, False)
         self.b_ai.setEnabled(True)
         ev = "".join(f"<li><b>{e['t']:.4g}</b> – {html.escape(e['signal'])}: {e['type']} {e['dir']}</li>" for e in self.events)
         self.ai_out.setHtml(f"<p style='color:#C0392B'>⚠ AI not available: {html.escape(msg)}</p>"

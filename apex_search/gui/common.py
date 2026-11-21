@@ -193,6 +193,17 @@ class _Task(QRunnable):
         self.finished = True
 
 
+class TokenStream(QObject):
+    """Created in the GUI thread; its emit() may be called from a worker thread (queued to the GUI)."""
+    token = Signal(str)
+
+
+def hold_background(ctx, on: bool):
+    w = getattr(ctx, "worker", None)
+    if w is not None:
+        w.hold = on
+
+
 class Runner:
     """Runs a function in a worker thread; callbacks must be methods of QWidgets (run in the GUI thread)."""
 

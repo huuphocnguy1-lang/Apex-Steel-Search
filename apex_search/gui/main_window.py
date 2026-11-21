@@ -40,8 +40,15 @@ class IndexWorker(QThread):
         self._stop = False
         self._cancel = False
         self.is_busy = False
+        self.hold = False          # True while you are asking the AI: background AI work waits
+        self.night_idle = False    # True during automatic night analysis: wait while the laptop is used
         self.indexer = Indexer(db, cfg, ai, log_fn=self.message.emit, progress=self.progress.emit,
-                               should_stop=lambda: self._stop or self._cancel)
+                               should_stop=lambda: self._stop or self._cancel, paused=self._paused)
+
+    def _paused(self):
+        if self.hold:
+            return True
+        return self.night_idle and user_idle_seconds() < 180
 
     def enqueue(self, job):
         self.jobs.put(job)
@@ -82,6 +89,19 @@ class IndexWorker(QThread):
                     self.indexer.embed_pending()
                 elif job[0] == "classify":
                     self.indexer.classify_existing()
+                elif job[0] == "night":
+                    auto = len(job) > 1 and job[1]
+                    self.night_idle = bool(auto and self.cfg.get("night_only_idle", True))
+                    try:
+                        self.message.emit("🌙 Night analysis started")
+                        self.indexer.scan()
+                        self.changed.emit()
+                        self.indexer.embed_pending(quiet=True)
+                        self.indexer.summarize_pending(self.cfg.get("night_folders", []))
+                        self.indexer.embed_pending(quiet=True)
+                        self.message.emit("🌙 Night analysis finished")
+                    finally:
+                        self.night_idle = False
             except Exception as e:
                 log.exception("indexing job failed")
                 self.message.emit(f"✘ Error: {e}")
@@ -104,6 +124,24 @@ class IndexWorker(QThread):
             except Exception as e:
                 self.message.emit(f"✘ {os.path.basename(p)}: {e}")
         self.changed.emit()
+
+
+def user_idle_seconds() -> float:
+    """Seconds since the last keyboard/mouse input (Windows). Elsewhere: always 'idle'."""
+    if sys.platform != "win32":
+        return 1e9
+    try:
+        import ctypes
+
+        class LASTINPUTINFO(ctypes.Structure):
+            _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+        li = LASTINPUTINFO()
+        li.cbSize = ctypes.sizeof(li)
+        if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(li)):
+            return 1e9
+        return (ctypes.windll.kernel32.GetTickCount() - li.dwTime) / 1000.0
+    except Exception:
+        return 1e9
 
 
 class FolderWatcher:
@@ -222,6 +260,11 @@ class MainWindow(QMainWindow):
 
         self.mode_changed()
         self.worker.start()
+        self._night_timer = QTimer(self)
+        self._night_timer.timeout.connect(self._night_check)
+        self._night_timer.start(60_000)
+        if not selftest and not cfg.get("mode") == "online":
+            self.runner.run(self.ai.warm_up, ())   # load the local model now → first question is fast
         self.worker.enqueue(("classify",))
         if not selftest:
             self.watcher.start(cfg.enabled_folders())
@@ -326,6 +369,22 @@ class MainWindow(QMainWindow):
         page = self.pages[key]
         self.stack.setCurrentWidget(page)
         page.on_show()
+
+    def _night_check(self):
+        import datetime
+        c = self.cfg
+        if not c.get("night_auto") or not c.get("night_folders"):
+            return
+        try:
+            hh, mm = (int(x) for x in str(c.get("night_start", "22:00")).split(":")[:2])
+        except ValueError:
+            hh, mm = 22, 0
+        now = datetime.datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        if (now.hour, now.minute) >= (hh, mm) and c.get("night_last") != today:
+            c["night_last"] = today
+            c.save()
+            self.worker.enqueue(("night", True))
 
     def _on_changed(self):
         self._change_timer.start(1500)

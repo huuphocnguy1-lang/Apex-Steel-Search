@@ -28,8 +28,17 @@ class FakeAI:
             out.append([1.0 + sum(t.count(w) for w in c) for c in self.CONCEPTS] + [0.5])
         return out
 
-    def chat(self, messages, images=None):
+    cfg = {"answer_cache_days": 7}
+
+    def chat_model_label(self):
+        return "fake"
+
+    def chat(self, messages, images=None, on_token=None, deep=None):
         self.last_images = images
+        self.calls = getattr(self, "calls", 0) + 1
+        if on_token:
+            on_token("Bolts M24 ")
+            on_token("grade 10.9, torque 1100 Nm [1]")
         return "Bolts M24 grade 10.9, torque 1100 Nm [1]"
 
 
@@ -249,3 +258,17 @@ def test_iba_dat_layouts_join_scan(tmp_path):
         iba.load_dat(str(tmp_path / "x.dat"))
     except ValueError as e:
         assert "ASCII" in str(e)
+
+
+def test_answer_cache_and_summaries(tmp_path):
+    from apex_search import search
+    from apex_search.db import DB
+    db = DB(str(tmp_path / "c.db"))
+    k1 = search.cache_key("assistant", "m", "Pump pressure ?")
+    k2 = search.cache_key("assistant", "m", "pump   pressure?")
+    assert k1 == k2
+    db.cache_put(k1, '{"text": "x", "sources": []}')
+    assert db.cache_get(k2, 7)
+    db.cache_clear()
+    assert db.cache_get(k2, 7) is None
+    assert db.count_to_summarise([]) == (0, 0)

@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QFileDia
                                QTableWidgetItem, QTextBrowser, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .. import doctype, meta, search
-from .common import (PreviewWidget, badge_html, button, fmt_date, fmt_size, h1, load_thumb_image, md_to_html,
+from .common import (PreviewWidget, TokenStream, badge_html, hold_background, button, fmt_date, fmt_size, h1, load_thumb_image, md_to_html,
                      open_file, placeholder, rev_html, sub, thumb_pixmap)
 
 
@@ -391,9 +391,38 @@ class AssistantPage(Page):
                     + f" ({html.escape(model)})</p>")
         self._q = q or "(attached files)"
         fn, args = self.answer_call(q, files)
-        self.ctx.runner.run(fn, args, self.on_answer, self.on_error)
+        # word-by-word display: tokens arrive from the worker thread through a Qt signal
+        import functools
+        self._live, self._live_dirty = "", False
+        self._stream = TokenStream(self)
+        self._stream.token.connect(self._on_token)
+        self._live_timer = QTimer(self)
+        self._live_timer.timeout.connect(self._render_live)
+        self._live_timer.start(150)
+        hold_background(self.ctx, True)
+        self.ctx.runner.run(functools.partial(fn, on_token=self._stream.token.emit), args, self.on_answer, self.on_error)
+
+    def _on_token(self, t):
+        self._live += t
+        self._live_dirty = True
+
+    def _render_live(self):
+        if not self._live_dirty:
+            return
+        self._live_dirty = False
+        self.render('<table width="100%" style="margin:6px 0"><tr><td style="background:white;border:1px solid #E1E6ED;'
+                    f'padding:10px 12px"><span style="color:#5F6D7E;font-size:8.5pt">🤖 {self.BOT} · writing…</span><br>'
+                    f'{md_to_html(self._live)}▌</td><td width="15%"></td></tr></table>')
+
+    def _end_stream(self):
+        hold_background(self.ctx, False)
+        t = getattr(self, "_live_timer", None)
+        if t is not None:
+            t.stop()
+        self._live_dirty = False
 
     def on_answer(self, res):
+        self._end_stream()
         self.busy = False
         self.send.setEnabled(True)
         body = md_to_html(res["text"])
@@ -408,7 +437,8 @@ class AssistantPage(Page):
         src = "".join(f'<div><a href="src:{ids[str(n)]}" style="color:#5F6D7E;text-decoration:none">[{n}] '
                       f'{"📎 " if not fid else ""}{html.escape(name)}</a></div>' for n, fid, name, path in res["sources"])
         self.parts.append(f'<table width="100%" style="margin:6px 0"><tr><td style="background:white;border:1px solid #E1E6ED;padding:10px 12px">'
-                          f'<span style="color:#5F6D7E;font-size:8.5pt">🤖 {self.BOT} · {html.escape(self.ctx.ai.chat_model_label())}</span><br>{body}'
+                          f'<span style="color:#5F6D7E;font-size:8.5pt">🤖 {self.BOT} · {html.escape(self.ctx.ai.chat_model_label())}'
+                          f'{" · ⚡ instant (same question asked before)" if res.get("cached") else ""}</span><br>{body}'
                           + (f'<hr><span style="font-size:8.5pt"><b>Sources</b>{src}</span>' if src else "")
                           + self.answer_footer(res) +
                           '</td><td width="15%"></td></tr></table>')
@@ -416,6 +446,7 @@ class AssistantPage(Page):
         self.render()
 
     def on_error(self, msg):
+        self._end_stream()
         self.busy = False
         self.send.setEnabled(True)
         self.parts.append(f'<p style="color:#C0392B">⚠ {html.escape(msg)}<br><span style="color:#5F6D7E">'
@@ -883,6 +914,33 @@ class FoldersPage(Page):
         fr.addWidget(rem)
         fr.addStretch()
         lv.addLayout(fr)
+        # ---- 🌙 night analysis: read & pre-summarise everything once, so later questions are fast
+        lv.addWidget(QLabel("<b>🌙 Night analysis</b> — the AI reads and summarises the ticked folders in "
+                            "advance, so your questions are answered faster."))
+        self.night = QListWidget()
+        self.night.setMaximumHeight(110)
+        self.night.itemChanged.connect(self.on_night_toggled)
+        lv.addWidget(self.night)
+        nr = QHBoxLayout()
+        self.night_auto = QCheckBox("Every night at")
+        self.night_auto.toggled.connect(self.on_night_settings)
+        self.night_time = QLineEdit()
+        self.night_time.setMaximumWidth(60)
+        self.night_time.editingFinished.connect(self.on_night_settings)
+        self.night_idle = QCheckBox("only when I'm not using the laptop")
+        self.night_idle.toggled.connect(self.on_night_settings)
+        nr.addWidget(self.night_auto)
+        nr.addWidget(self.night_time)
+        nr.addWidget(self.night_idle)
+        nr.addStretch()
+        lv.addLayout(nr)
+        nb = QHBoxLayout()
+        self.b_night = button("🌙 Start now")
+        self.b_night.clicked.connect(self.start_night)
+        nb.addWidget(self.b_night)
+        self.night_state = sub("")
+        nb.addWidget(self.night_state, 1)
+        lv.addLayout(nb)
         right = QWidget()
         rv = QVBoxLayout(right)
         rv.setContentsMargins(0, 0, 0, 0)
@@ -929,6 +987,24 @@ class FoldersPage(Page):
                 it.setToolTip("Folder not found (USB drive unplugged?)")
             self.folders.addItem(it)
         self.folders.blockSignals(False)
+        c = self.ctx.cfg
+        chosen = set(c.get("night_folders", []))
+        self.night.blockSignals(True)
+        self.night.clear()
+        for f in c.get("folders", []):
+            it = QListWidgetItem("🌙  " + f["path"])
+            it.setData(Qt.ItemDataRole.UserRole, f["path"])
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked if f["path"] in chosen else Qt.CheckState.Unchecked)
+            self.night.addItem(it)
+        self.night.blockSignals(False)
+        for w, v in ((self.night_auto, c.get("night_auto", False)), (self.night_idle, c.get("night_only_idle", True))):
+            w.blockSignals(True)
+            w.setChecked(bool(v))
+            w.blockSignals(False)
+        self.night_time.setText(str(c.get("night_start", "22:00")))
+        done, total = self.ctx.db.count_to_summarise(c.get("night_folders", []))
+        self.night_state.setText(f"{done} / {total} documents summarised" if total else "Tick the folders to analyse")
         s = self.ctx.db.stats()
         cell = lambda n, l: (f'<td style="padding:4px 18px 4px 0"><span style="font-size:17pt;font-weight:700;color:#1F4E79">{n}</span>'
                              f'<br><span style="color:#5F6D7E">{l}</span></td>')
@@ -936,6 +1012,33 @@ class FoldersPage(Page):
                            cell(s.get("photo", 0), "photos") + cell(s["ocr"], "read by OCR") +
                            cell(f"{s['vectors']}/{s['chunks']}", "smart index passages") +
                            cell(f"{s['db_mb']} MB", "index size") + cell(s["errors"], "with notes") + "</tr></table>")
+
+    def on_night_toggled(self, _item=None):
+        paths = [self.night.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.night.count())
+                 if self.night.item(i).checkState() == Qt.CheckState.Checked]
+        self.ctx.cfg["night_folders"] = paths
+        self.ctx.cfg.save()
+        done, total = self.ctx.db.count_to_summarise(paths)
+        self.night_state.setText(f"{done} / {total} documents summarised" if total else "Tick the folders to analyse")
+
+    def on_night_settings(self, *_):
+        t = self.night_time.text().strip() or "22:00"
+        if not re.fullmatch(r"\d{1,2}:\d{2}", t):
+            t = "22:00"
+            self.night_time.setText(t)
+        c = self.ctx.cfg
+        c["night_auto"] = self.night_auto.isChecked()
+        c["night_start"] = t
+        c["night_only_idle"] = self.night_idle.isChecked()
+        c.save()
+
+    def start_night(self):
+        if not self.ctx.cfg.get("night_folders"):
+            QMessageBox.information(self, "Night analysis", "Tick at least one folder in the 🌙 list first.")
+            return
+        self.append_log("🌙 Night analysis queued: scan → smart index → summaries of every document.")
+        self.night_state.setText("Running… (you can keep working; it gives way when you ask a question)")
+        self.ctx.worker.enqueue(("night", False))
 
     def start_smart(self):
         self.b_smart.setEnabled(False)
@@ -1088,6 +1191,16 @@ class SettingsPage(Page):
         form.addRow("Chat model", self.cchat)
         form.addRow("Embedding model", self.cemb)
         form.addRow("Picture model", self.cvis)
+        section("Answer speed")
+        self.deep = QCheckBox("Deep thinking — slower (2–5×) but better on very hard problems")
+        self.deep.setChecked(bool(self.ctx.cfg.get("deep_thinking", False)))
+        form.addRow("", self.deep)
+        cc = button("Clear answer memory", ghost=True,
+                    tip="Answers to the same question are reused for a few days (⚡ instant). Clear them after big changes.")
+        cc.clicked.connect(self.clear_cache)
+        form.addRow("", cc)
+        form.addRow("", sub("Fast mode: the model stays loaded for 60 min, answers appear word by word, and the "
+                            "background indexing pauses while you ask. 🌙 Night analysis (Folders page) makes it faster still."))
         section("Smart index")
         form.addRow("Built with", self.eprov)
         form.addRow("", self.auto)
@@ -1124,6 +1237,11 @@ class SettingsPage(Page):
         self.eprov.setCurrentIndex(max(0, self.eprov.findData(c["embed_provider"])))
         self.auto.setChecked(bool(c["auto_smart"]))
         self.ocr.setChecked(bool(c["ocr_enabled"]))
+        self.deep.setChecked(bool(c.get("deep_thinking", False)))
+
+    def clear_cache(self):
+        n = self.ctx.db.cache_clear()
+        self.result.setText(f"✔ Answer memory cleared{f' ({n} answers)' if isinstance(n, int) else ''}.")
 
     def check_readers(self):
         self.comp_lbl.setText("Checking…")
@@ -1145,7 +1263,7 @@ class SettingsPage(Page):
                  cloud_chat_model=self.cchat.text().strip(), cloud_embed_model=self.cemb.text().strip(),
                  local_vision_model=self.lvis.text().strip(), cloud_vision_model=self.cvis.text().strip(),
                  embed_provider=self.eprov.currentData(), auto_smart=self.auto.isChecked(),
-                 ocr_enabled=self.ocr.isChecked(), oda_path=self.oda.text().strip(),
+                 ocr_enabled=self.ocr.isChecked(), deep_thinking=self.deep.isChecked(), oda_path=self.oda.text().strip(),
                  project_regex=self.preg.text().strip() or r"\bP-?\d{3,5}\b",
                  excluded_dirs=[x.strip() for x in self.excl.text().split(",") if x.strip()])
         c.save()

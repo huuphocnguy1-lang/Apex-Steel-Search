@@ -49,11 +49,23 @@ def system_prompt(area: str) -> str:
             "You assist engineers: always remind to follow OEM procedures for safety-critical work.")
 
 
-def specialist_answer(db, ai, area: str, question: str, history=None, attachments=None, extra_context: str = "") -> dict:
+def specialist_answer(db, ai, area: str, question: str, history=None, attachments=None, extra_context: str = "",
+                      on_token=None) -> dict:
+    import json as _json
     attachments = attachments or []
+    key = None
+    if not history and not attachments and question.strip():
+        key = search.cache_key("specialist", area, ai.chat_model_label(), question, extra_context)
+        hit = db.cache_get(key, (getattr(ai, "cfg", None) or {}).get("answer_cache_days", 7))
+        if hit:
+            res = _json.loads(hit)
+            res["cached"] = True
+            if on_token:
+                on_token(res["text"])
+            return res
     q = question.strip() or "Analyse the attached file(s) and troubleshoot the problem they show."
     probe = q + " " + area + " " + " ".join(a["text"][:300] for a in attachments) + " " + extra_context[:500]
-    srcs = search._gather_sources(db, ai, probe, max_sources=5, budget=7000)
+    srcs = search._gather_sources(db, ai, probe, max_sources=4, budget=5500)
     cases = db.similar_cases(probe, area, k=3)
     sources, blocks, n = [], [], 0
     if extra_context:
@@ -79,13 +91,16 @@ def specialist_answer(db, ai, area: str, question: str, history=None, attachment
         msgs.append({"role": h["role"], "content": h["content"][:1500]})
     msgs.append({"role": "user", "content": "SOURCES:\n\n" + ("\n\n".join(blocks) or "(none found)") + f"\n\nQUESTION: {q}"})
     images = [a["image"] for a in attachments if a.get("image")]
-    text = ai.chat(msgs, images=images or None)
-    return {"text": text, "sources": sources, "cases": cases}
+    text = ai.chat(msgs, images=images or None, on_token=on_token)
+    res = {"text": text, "sources": sources, "cases": [dict(c) for c in cases]}
+    if key and text:
+        db.cache_put(key, _json.dumps(res))
+    return res
 
 
-def specialist_with_files(db, ai, area, question, history, paths, cfg, extra_context=""):
+def specialist_with_files(db, ai, area, question, history, paths, cfg, extra_context="", on_token=None):
     att = search.prepare_attachments(paths, cfg) if paths else None
-    return specialist_answer(db, ai, area, question, history, att, extra_context)
+    return specialist_answer(db, ai, area, question, history, att, extra_context, on_token)
 
 
 # ------------------------------------------------------------------ metallurgy helpers

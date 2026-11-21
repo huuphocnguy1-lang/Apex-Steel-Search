@@ -25,6 +25,14 @@
 | 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
 | 🔒 **Offline / ☁ Online** | Offline keeps all data on your laptop. Online lets the assistant use a cloud AI (Qwen, DeepSeek…). |
 
+## Fast answers (v0.4)
+- **Thinking off** for Qwen3 (Settings → *Deep thinking* turns it back on for very hard problems).
+- The local model **stays loaded** 60 min and is **loaded at start-up**, so the first question doesn't wait.
+- Answers appear **word by word**; the same question asked again is answered **instantly (⚡)** for 7 days.
+- Background indexing **pauses while you ask** a question.
+- **🌙 Night analysis** (Folders & index): tick folders; the AI reads and summarises every document in advance
+  (now, or every night at a set time, only while you're not using the laptop). Questions then use the short summaries.
+
 ## Get the app (no programming needed)
 
 1. Push this project to GitHub (see below). **GitHub Actions builds the app automatically** in about 10 minutes.

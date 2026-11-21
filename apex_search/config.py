@@ -23,6 +23,16 @@ DEFAULTS = {
     "cloud_vision_model": "qwen-vl-max",
     # Which engine builds the smart-search index: "local" or "cloud"
     "embed_provider": "local",
+    # Speed of the local AI
+    "deep_thinking": False,        # Qwen3 & co: think before answering (much slower)
+    "keep_alive": "60m",           # keep the model loaded in memory between questions
+    "num_ctx": 6144,
+    "answer_cache_days": 7,
+    # Night analysis: pre-read and summarise important folders when the laptop is not used
+    "night_folders": [],
+    "night_auto": False,
+    "night_start": "22:00",
+    "night_only_idle": True,
     # Build smart index automatically after each scan (needs the AI engine running)
     "auto_smart": True,
     # OCR (text in photos and scanned PDFs)

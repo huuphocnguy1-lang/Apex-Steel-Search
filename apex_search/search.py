@@ -205,7 +205,9 @@ SYSTEM_PROMPT = (
 )
 
 
-def _gather_sources(db, ai, question: str, max_sources: int = 6, budget: int = 9000):
+def _gather_sources(db, ai, question: str, max_sources: int = 5, budget: int = 6000):
+    """Finds the most relevant passages. Short texts = faster answers. Pre-summaries (night analysis) are used
+    first when they exist: they condense a whole document in a few lines."""
     picks = []  # (file_id, text)
     try:
         import numpy as np
@@ -227,11 +229,25 @@ def _gather_sources(db, ai, question: str, max_sources: int = 6, budget: int = 9
     for fid, t in picks:
         if fid not in by_file and len(by_file) >= max_sources:
             continue
+        if fid not in by_file:
+            summ = db.summary(fid) if hasattr(db, "summary") else None
+            if summ:
+                by_file[fid] = ["Summary: " + summ[:700]]
+                used += min(len(summ), 700)
+        if t.startswith("SUMMARY: "):
+            continue
+        t = t[:1400]
         if used + len(t) > budget:
             continue
         by_file.setdefault(fid, []).append(t)
         used += len(t)
     return by_file
+
+
+def cache_key(*parts) -> str:
+    import hashlib
+    norm = " | ".join(re.sub(r"\s+", " ", re.sub(r"[?!.,;:'\"()¿¡。，？！]+", " ", str(p).lower())).strip() for p in parts)
+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()
 
 
 def prepare_attachments(paths: list[str], cfg: dict) -> list[dict]:
@@ -261,8 +277,20 @@ def prepare_attachments(paths: list[str], cfg: dict) -> list[dict]:
     return out
 
 
-def answer(db, ai, question: str, history: list[dict] | None = None, attachments: list[dict] | None = None) -> dict:
+def answer(db, ai, question: str, history: list[dict] | None = None, attachments: list[dict] | None = None,
+           on_token=None) -> dict:
+    import json as _json
     attachments = attachments or []
+    key = None
+    if not history and not attachments and question.strip():
+        key = cache_key("assistant", ai.chat_model_label(), question)
+        hit = db.cache_get(key, (getattr(ai, "cfg", None) or {}).get("answer_cache_days", 7)) if hasattr(db, "cache_get") else None
+        if hit:
+            res = _json.loads(hit)
+            res["cached"] = True
+            if on_token:
+                on_token(res["text"])
+            return res
     q = question.strip() or "Analyse the attached file(s): describe what they show and any problem you see."
     probe = q + " " + " ".join(a["text"][:300] for a in attachments)
     srcs = _gather_sources(db, ai, probe)
@@ -291,12 +319,15 @@ def answer(db, ai, question: str, history: list[dict] | None = None, attachments
         msgs.append({"role": h["role"], "content": h["content"][:1500]})
     msgs.append({"role": "user", "content": "SOURCES:\n\n" + "\n\n".join(blocks) + f"\n\nQUESTION: {q}"})
     images = [a["image"] for a in attachments if a.get("image")]
-    text = ai.chat(msgs, images=images or None)
-    return {"text": text, "sources": sources}
+    text = ai.chat(msgs, images=images or None, on_token=on_token)
+    res = {"text": text, "sources": sources}
+    if key and text:
+        db.cache_put(key, _json.dumps(res))
+    return res
 
 
-def answer_with_files(db, ai, question, history, paths, cfg):
-    return answer(db, ai, question, history, prepare_attachments(paths, cfg) if paths else None)
+def answer_with_files(db, ai, question, history, paths, cfg, on_token=None):
+    return answer(db, ai, question, history, prepare_attachments(paths, cfg) if paths else None, on_token)
 
 
 # ------------------------------------------------------------------ revisions diff

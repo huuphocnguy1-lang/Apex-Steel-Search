@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS texts(file_id INTEGER PRIMARY KEY, body TEXT);
 CREATE TABLE IF NOT EXISTS chunks(id INTEGER PRIMARY KEY, file_id INTEGER, idx INTEGER, text TEXT, vec BLOB, model TEXT);
 CREATE INDEX IF NOT EXISTS ix_chunks_file ON chunks(file_id);
 CREATE INDEX IF NOT EXISTS ix_chunks_vec ON chunks(model);
+CREATE TABLE IF NOT EXISTS summaries(file_id INTEGER PRIMARY KEY, text TEXT, model TEXT, created REAL);
+CREATE TABLE IF NOT EXISTS answer_cache(key TEXT PRIMARY KEY, answer TEXT, created REAL);
 CREATE TABLE IF NOT EXISTS cases(id INTEGER PRIMARY KEY, date TEXT, area TEXT, symptom TEXT, cause TEXT, fix TEXT,
   author TEXT, created REAL);
 """
@@ -79,6 +81,7 @@ class DB:
             else:
                 cur = c.execute(f"INSERT INTO files({','.join(FILE_COLS)}) VALUES({','.join('?' * len(FILE_COLS))})", vals)
                 fid = cur.lastrowid
+            c.execute("DELETE FROM summaries WHERE file_id=?", (fid,))
             c.execute("INSERT OR REPLACE INTO texts(file_id, body) VALUES(?,?)", (fid, body))
             c.execute("INSERT INTO fts(rowid,name,title,body,tags) VALUES(?,?,?,?,?)",
                       (fid, f.get("name") or "", f.get("title") or "", body, f.get("tags") or ""))
@@ -94,6 +97,7 @@ class DB:
                 return False
             fid = r[0]
             for sql in ("DELETE FROM files WHERE id=?", "DELETE FROM texts WHERE file_id=?",
+                        "DELETE FROM summaries WHERE file_id=?",
                         "DELETE FROM fts WHERE rowid=?", "DELETE FROM chunks WHERE file_id=?"):
                 c.execute(sql, (fid,))
             self.version += 1
@@ -193,6 +197,62 @@ class DB:
         like = f"%{text}%"
         return self.q("SELECT * FROM files WHERE dtype=? AND (name LIKE ? OR title LIKE ? OR project LIKE ?) "
                       "ORDER BY mtime DESC LIMIT ?", (dtype, like, like, like, limit))
+
+    # ------------------------------------------------------------ pre-summaries (night analysis)
+    def files_to_summarise(self, folders: list[str], limit: int = 50):
+        import os as _os
+        if not folders:
+            return []
+        conds = " OR ".join("f.path LIKE ?" for _ in folders)
+        args = [_os.path.normpath(x).rstrip("\\/") + "%" for x in folders]
+        return self.q(f"SELECT f.id, f.name, f.title, f.kind, f.dtype, t.body FROM files f JOIN texts t ON t.file_id=f.id "
+                      f"LEFT JOIN summaries s ON s.file_id=f.id WHERE s.file_id IS NULL AND ({conds}) "
+                      f"AND f.kind NOT IN ('photo') AND length(t.body) > 300 ORDER BY f.mtime DESC LIMIT ?",
+                      args + [limit])
+
+    def count_to_summarise(self, folders: list[str]) -> tuple[int, int]:
+        import os as _os
+        if not folders:
+            return 0, 0
+        conds = " OR ".join("f.path LIKE ?" for _ in folders)
+        args = [_os.path.normpath(x).rstrip("\\/") + "%" for x in folders]
+        total = self.one(f"SELECT COUNT(*) FROM files f JOIN texts t ON t.file_id=f.id WHERE ({conds}) "
+                         f"AND f.kind NOT IN ('photo') AND length(t.body) > 300", args)[0]
+        done = self.one(f"SELECT COUNT(*) FROM files f JOIN summaries s ON s.file_id=f.id WHERE ({conds})", args)[0]
+        return done, total
+
+    def save_summary(self, fid: int, text: str, model: str):
+        import time as _t
+        with self.lock, self.conn as c:
+            c.execute("INSERT OR REPLACE INTO summaries(file_id, text, model, created) VALUES(?,?,?,?)",
+                      (fid, text, model, _t.time()))
+            c.execute("DELETE FROM chunks WHERE file_id=? AND idx=-1", (fid,))
+            c.execute("INSERT INTO chunks(file_id, idx, text) VALUES(?,?,?)", (fid, -1, "SUMMARY: " + text))
+            self.version += 1
+
+    def summary(self, fid: int) -> str | None:
+        r = self.one("SELECT text FROM summaries WHERE file_id=?", (fid,))
+        return r[0] if r else None
+
+    def summaries_count(self) -> int:
+        return self.one("SELECT COUNT(*) FROM summaries")[0]
+
+    # ------------------------------------------------------------ answer cache
+    def cache_get(self, key: str, max_age_days: float = 7):
+        import time as _t
+        r = self.one("SELECT answer, created FROM answer_cache WHERE key=?", (key,))
+        if r and _t.time() - r[1] < max_age_days * 86400:
+            return r[0]
+        return None
+
+    def cache_put(self, key: str, answer: str):
+        import time as _t
+        with self.lock, self.conn as c:
+            c.execute("INSERT OR REPLACE INTO answer_cache(key, answer, created) VALUES(?,?,?)", (key, answer, _t.time()))
+
+    def cache_clear(self):
+        with self.lock, self.conn as c:
+            c.execute("DELETE FROM answer_cache")
 
     # ------------------------------------------------------------ lessons learned
     def cases(self, text: str = ""):

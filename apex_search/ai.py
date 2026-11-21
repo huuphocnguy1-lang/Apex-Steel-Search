@@ -42,6 +42,83 @@ def _post(url: str, payload: dict, headers: dict | None = None, timeout: int = 1
         raise AIError(f"Timeout calling {url}") from None
 
 
+class _StreamUnsupported(Exception):
+    pass
+
+
+def _stream(url: str, payload: dict, headers: dict | None, timeout: int):
+    """Yields text lines of a streaming HTTP answer (Ollama NDJSON or OpenAI-style SSE)."""
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
+    opener = _NO_PROXY if _is_local(url) else urllib.request.build_opener()
+    try:
+        with opener.open(req, timeout=timeout) as r:
+            ctype = r.headers.get("Content-Type", "")
+            if "json" in ctype and "ndjson" not in ctype and "stream" in payload and not _is_local(url):
+                body = r.read().decode("utf-8", "ignore")   # server ignored stream=True
+                d = json.loads(body)
+                yield "data: " + json.dumps({"choices": [{"delta": {"content": d["choices"][0]["message"]["content"]}}]})
+                return
+            for raw in r:
+                line = raw.decode("utf-8", "ignore").strip()
+                if line:
+                    yield line
+    except urllib.error.HTTPError as e:
+        body = e.read()[:400].decode("utf-8", "ignore")
+        raise AIError(f"HTTP {e.code} from {url}: {body}") from None
+    except urllib.error.URLError as e:
+        raise AIError(f"Cannot reach {url} ({e.reason}). Is the AI engine running?") from None
+    except TimeoutError:
+        raise AIError(f"Timeout calling {url}") from None
+
+
+class _ThinkFilter:
+    """Hides <think>…</think> blocks (models that think inside the text) and forwards the rest."""
+
+    def __init__(self, on_token=None):
+        self.on_token, self.buf, self.out, self.inside = on_token, "", [], False
+
+    def feed(self, piece: str):
+        self.buf += piece
+        while True:
+            if self.inside:
+                i = self.buf.find("</think>")
+                if i < 0:
+                    self.buf = self.buf[-8:]
+                    return
+                self.buf = self.buf[i + 8:]
+                self.inside = False
+            else:
+                i = self.buf.find("<think>")
+                if i < 0:
+                    keep = 6 if "<" in self.buf[-6:] else 0     # a tag may be split between pieces
+                    emit, self.buf = (self.buf[:-keep], self.buf[-keep:]) if keep else (self.buf, "")
+                    self._emit(emit)
+                    return
+                self._emit(self.buf[:i])
+                self.buf = self.buf[i + 7:]
+                self.inside = True
+
+    def _emit(self, t):
+        if t:
+            if not self.out:
+                t = t.lstrip()
+                if not t:
+                    return
+            self.out.append(t)
+            if self.on_token:
+                try:
+                    self.on_token(t)
+                except Exception:
+                    pass
+
+    def text(self) -> str:
+        if self.buf and not self.inside:
+            self._emit(self.buf)
+            self.buf = ""
+        return "".join(self.out).strip()
+
+
 class AIClient:
     def __init__(self, cfg: dict):
         self.cfg = cfg
@@ -92,29 +169,93 @@ class AIClient:
             raise AIError(f"Unexpected Ollama answer: {str(r)[:200]}")
         return r["embeddings"]
 
-    def chat(self, messages: list[dict], images: list[str] | None = None) -> str:
-        """images: base64 JPEG strings attached to the last user message (uses the vision model)."""
+    # ------------------------------------------------------------ chat (streaming, fast)
+    def _is_thinking_model(self, model: str) -> bool:
+        m = (model or "").lower()
+        return any(k in m for k in ("qwen3", "deepseek-r1", "qwq", "magistral", "gpt-oss"))
+
+    def chat(self, messages: list[dict], images: list[str] | None = None, on_token=None, deep: bool | None = None) -> str:
+        """Returns the full answer. on_token(text) is called with each new piece as it is written.
+        images: base64 JPEG strings attached to the last user message (uses the vision model).
+        deep: allow the model to 'think' first (slower). Default from Settings (off = fast)."""
+        deep = self.cfg.get("deep_thinking", False) if deep is None else deep
         msgs = [dict(m) for m in messages]
+        flt = _ThinkFilter(on_token)
         if self.online:
             model = self.cfg.get("cloud_vision_model") if images else self.cfg["cloud_chat_model"]
             if images:
                 msgs[-1]["content"] = [{"type": "text", "text": msgs[-1]["content"]}] + [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images]
-            r = _post(self._cloud("/chat/completions"),
-                      {"model": model, "messages": msgs, "temperature": 0.2},
-                      self._cloud_headers(), timeout=240)
-            return r["choices"][0]["message"]["content"]
+            payload = {"model": model, "messages": msgs, "temperature": 0.2, "stream": True}
+            if not deep and "qwen3" in (model or "").lower():
+                payload["enable_thinking"] = False
+            try:
+                for line in _stream(self._cloud("/chat/completions"), payload, self._cloud_headers(), 240):
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        d = json.loads(data)
+                        piece = (d.get("choices") or [{}])[0].get("delta", {}).get("content") or ""
+                    except (ValueError, AttributeError, IndexError):
+                        piece = ""
+                    if piece:
+                        flt.feed(piece)
+            except _StreamUnsupported:
+                payload["stream"] = False
+                r = _post(self._cloud("/chat/completions"), payload, self._cloud_headers(), timeout=240)
+                flt.feed(r["choices"][0]["message"]["content"] or "")
+            return flt.text()
         model = self.cfg.get("local_vision_model") if images else self.cfg["local_chat_model"]
         if images:
             msgs[-1]["images"] = images
+        thinking = self._is_thinking_model(model)
+        if thinking and not deep and msgs and msgs[-1].get("role") == "user" and "qwen3" in model.lower():
+            msgs[-1]["content"] = str(msgs[-1]["content"]) + "\n/no_think"
+        payload = {"model": model, "messages": msgs, "stream": True,
+                   "keep_alive": self.cfg.get("keep_alive", "60m"),
+                   "options": {"temperature": 0.2, "num_ctx": int(self.cfg.get("num_ctx", 6144))}}
+        if thinking:
+            payload["think"] = bool(deep)
         try:
-            r = _post(self._ollama("/api/chat"),
-                      {"model": model, "messages": msgs, "stream": False, "options": {"temperature": 0.2}}, timeout=900)
+            for line in _stream(self._ollama("/api/chat"), payload, None, 900):
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                if d.get("error"):
+                    raise AIError(str(d["error"]))
+                piece = (d.get("message") or {}).get("content") or ""
+                if piece:
+                    flt.feed(piece)
+                if d.get("done"):
+                    break
         except AIError as e:
             if images and ("not found" in str(e) or "404" in str(e)):
                 raise AIError(f"The picture model '{model}' is not installed. Open cmd and run:  ollama pull {model}") from None
+            if "think" in str(e).lower() and "think" in payload:   # old Ollama without the think option
+                payload.pop("think")
+                return self._chat_plain(payload, flt)
             raise
-        return r["message"]["content"]
+        return flt.text()
+
+    def _chat_plain(self, payload, flt):
+        payload = dict(payload, stream=False)
+        r = _post(self._ollama("/api/chat"), payload, timeout=900)
+        flt.feed(r["message"]["content"] or "")
+        return flt.text()
+
+    def warm_up(self):
+        """Loads the local chat model in memory (so the first question is fast)."""
+        if self.online:
+            return
+        try:
+            _post(self._ollama("/api/generate"), {"model": self.cfg["local_chat_model"], "prompt": "",
+                                                  "keep_alive": self.cfg.get("keep_alive", "60m")}, timeout=300)
+        except Exception:
+            pass
 
     def check_embed_ready(self) -> str:
         """Quick check before building the smart index. Raises AIError with a clear, actionable message."""
