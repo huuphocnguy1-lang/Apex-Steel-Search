@@ -264,12 +264,19 @@ def search_bing(query: str, n: int = 6, cn: bool = False, intl: bool = False) ->
     else:
         url = f"https://www.bing.com/search?q={urllib.parse.quote(query)}&setlang=en&cc=US&count=15"
     data, _ = _get(url, timeout=15)
-    return _bing_results(data.decode("utf-8", "ignore"))
+    res = _bing_results(data.decode("utf-8", "ignore"))
+    if not res:
+        _debug_save(("bing_cn" if cn else "bing") + ".html", data)
+        raise RuntimeError("page received but no results in it (captcha / consent page / blocked)")
+    return res
 
 
 def search_ddg(query: str, n: int = 6) -> list[tuple]:
     data, _ = _get("https://html.duckduckgo.com/html/?q=" + urllib.parse.quote(query), timeout=15)
     page = data.decode("utf-8", "ignore")
+    if "result__a" not in page:
+        _debug_save("ddg.html", data)
+        raise RuntimeError("page received but no results in it (blocked / captcha)")
     out = []
     for m in re.finditer(r'class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)</a>(.*?)(?=class="result__a"|$)', page, flags=re.S):
         snip = re.search(r'class="result__snippet"[^>]*>(.*?)</a>', m.group(3), flags=re.S)
@@ -283,6 +290,9 @@ def search_baidu(query: str, n: int = 6) -> list[tuple]:
     out = []
     for m in re.finditer(r'<h3[^>]*>\s*<a[^>]+href="(https?://www\.baidu\.com/link\?url=[^"]+)"[^>]*>(.*?)</a>', page, flags=re.S):
         out.append((m.group(1), _strip_tags(m.group(2)), ""))
+    if not out:
+        _debug_save("baidu.html", data)
+        raise RuntimeError("page received but no results in it (Baidu security check / captcha)")
     return out
 
 
@@ -304,7 +314,25 @@ def search_wikipedia(query: str, n: int = 2) -> list[str]:
     return ["https://en.wikipedia.org/wiki/" + urllib.parse.quote(h["title"].replace(" ", "_")) for h in hits]
 
 
-DEAD: set = set()   # engines found unreachable during the current learning run (skipped afterwards)
+DEAD: set = set()   # engines skipped for the rest of the run (after 3 failures)
+FAILS: dict = {}
+
+
+def _err(ex) -> str:
+    code = getattr(ex, "code", None)
+    reason = getattr(ex, "reason", None)
+    t = type(ex).__name__ + (f" {code}" if code else "") + (f" ({reason})" if reason and not code else "")
+    return t[:120]
+
+
+def _debug_save(name: str, data: bytes):
+    try:
+        d = os.path.join(root(), "_debug")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(data[:2_000_000])
+    except OSError:
+        pass
 
 ENGINES = {"bing_en": "Bing International (cn.bing.com, English)", "bing": "Bing (www.bing.com)",
            "ddg": "DuckDuckGo", "baidu": "Baidu"}
@@ -321,9 +349,11 @@ def web_search(query: str, n: int = 4, engine: str = "auto", log=None) -> list[s
             res = (search_bing(query, n, cn=True, intl=True) if e == "bing_en" else search_bing(query, n) if e == "bing"
                    else search_ddg(query, n) if e == "ddg" else search_baidu(query, n))
         except Exception as ex:
-            DEAD.add(e)
+            FAILS[e] = FAILS.get(e, 0) + 1
+            if FAILS[e] >= 3:
+                DEAD.add(e)
             if log:
-                log(f"   {ENGINES.get(e, e)}: not reachable ({type(ex).__name__}) → skipped for this run")
+                log(f"   {ENGINES.get(e, e)}: failed — {_err(ex)}" + (" → skipped for the rest of this run" if e in DEAD else ""))
             continue
         good = []
         for u, title, snip in res:
@@ -469,6 +499,7 @@ def learn(topics: list[str], custom: list[str] | None = None, urls: list[str] | 
     progress = progress or (lambda i, n, m: None)
     should_stop = should_stop or (lambda: False)
     DEAD.clear()
+    FAILS.clear()
     manifest = load_manifest()
     jobs = []  # (topic, keywords, query)
     for t in topics:
@@ -565,3 +596,35 @@ def write_ai_notes(ai, topics, custom, log, should_stop) -> int:
                     f"unverified, check against plant documents.)\n\n{txt}\n")
         n += 1
     return n
+
+
+def test_engines(query: str = "hydraulic servo valve null shift") -> str:
+    """Diagnosis: tries every search engine and a few websites, returns a readable report."""
+    lines = [f"🩺 Search test — query: '{query}'"]
+    try:
+        px = urllib.request.getproxies()
+        px = {k: v for k, v in px.items() if k in ("http", "https")}
+        lines.append("Proxy: " + (", ".join(f"{k}={v}" for k, v in px.items()) if px else "none (direct connection)"))
+    except Exception:
+        pass
+    for e, fn in (("bing_en", lambda: search_bing(query, 8, cn=True, intl=True)), ("bing", lambda: search_bing(query, 8)),
+                  ("ddg", lambda: search_ddg(query, 8)), ("baidu", lambda: search_baidu(query, 8))):
+        t0 = time.time()
+        try:
+            res = fn()
+            rel = [r for r in res if result_relevant(query, r[1] + " " + r[2] + " " + r[0])]
+            lines.append(f"✔ {ENGINES[e]}: {len(res)} results, {len(rel)} relevant ({time.time() - t0:.1f} s)"
+                         + (f" — e.g. {rel[0][1][:70]}" if rel else ""))
+        except Exception as ex:
+            lines.append(f"✘ {ENGINES[e]}: {_err(ex)} — {str(ex)[:90]} ({time.time() - t0:.1f} s)")
+    for name, url in (("Wikipedia", "https://en.wikipedia.org/wiki/Hydraulic_cylinder"),
+                      ("ispatguru (steel)", "https://www.ispatguru.com/"),
+                      ("Hydraulics & Pneumatics", "https://www.hydraulicspneumatics.com/")):
+        t0 = time.time()
+        try:
+            data, _ = _get(url, timeout=12)
+            lines.append(f"✔ {name}: reachable ({len(data) // 1024} kB, {time.time() - t0:.1f} s)")
+        except Exception as ex:
+            lines.append(f"✘ {name}: {_err(ex)} ({time.time() - t0:.1f} s)")
+    lines.append(f"Raw pages of engines that gave no results are saved in {os.path.join(root(), '_debug')}")
+    return "\n".join(lines)

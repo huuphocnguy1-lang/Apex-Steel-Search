@@ -69,7 +69,9 @@ class KnowledgePage(Page):
         self.b_folder = button("📁 Open folder", ghost=True,
                                tip="Put your own manuals in 'my_notes' — they count as plant documents")
         self.b_folder.clicked.connect(lambda: open_file(knowledge.root()))
-        for b in (self.b_learn, self.b_digest, self.b_stop, self.b_folder):
+        self.b_test = button("🩺 Test search", ghost=True, tip="Checks which search engines and websites work from this laptop")
+        self.b_test.clicked.connect(self.test_search)
+        for b in (self.b_learn, self.b_test, self.b_digest, self.b_stop, self.b_folder):
             br.addWidget(b)
         br.addStretch()
         lv.addLayout(br)
@@ -176,6 +178,15 @@ class KnowledgePage(Page):
                                            "per_query": c["kn_per_query"], "engine": c["kn_engine"],
                                            "wikipedia": c["kn_wikipedia"],
                                            "ai_notes": bool(c["kn_ai_notes"] and self.ctx.ai.online)}))
+
+    def test_search(self):
+        self.b_test.setEnabled(False)
+        self.append_log("🩺 Testing search engines and websites (about 30 s)…")
+        self.ctx.runner.run(knowledge.test_engines, (), self.on_test_done, self.on_test_done)
+
+    def on_test_done(self, txt):
+        self.b_test.setEnabled(True)
+        self.append_log(str(txt))
 
     def open_row(self, r, _c):
         it = self.table.item(r, 0)
