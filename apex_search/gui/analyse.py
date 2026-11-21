@@ -114,15 +114,17 @@ class TempDialog(QDialog):
 # ================================================================== Steel Specialist
 class SpecialistPage(AssistantPage):
     TITLE = "Steel Specialist"
-    SUBTITLE = ("Troubleshooting for ESP, casting, hot strip mill, pay-off reel, laminar cooling and hydraulics — from "
-                "your documents, your lessons learned and your photos (📎 / drag & drop / 📋 paste screenshot).")
+    SUBTITLE = ("Specialist for ESP lines, hydraulics and the steel process (caster, HRM, pendulum shear, IDH, FM, cooling, "
+                "coilers). Answers from 🏭 your documents, 📒 lessons learned, 📘 built-in expert notes and 🌐 learned web "
+                "sources — plus your photos (📎 / drag & drop / 📋 paste screenshot).")
     BOT = "Steel Specialist"
     INTRO = ("Choose the area, describe the symptom (what, where, when, alarms, values) and add a photo if you have one. "
              "Answers follow: what I see → likely causes → checks → actions → safety.")
-    SUGGEST = ["Mould level hunting", "Strip break F5–F6", "Coiling temp too high", "Servo valve hunting"]
+    SUGGEST = ["Pendulum shear does not cut", "HGC cylinder drifting", "IDH exit temperature low",
+               "Mill trips to plate mode", "Servo valve hunting"]
 
     def __init__(self, ctx):
-        self.area = "Caster"
+        self.area = "ESP"
         self._extra = ""
         self._last_q = ""
         super().__init__(ctx)
@@ -130,7 +132,8 @@ class SpecialistPage(AssistantPage):
         self.area_group = QButtonGroup(self)
         self.area_group.setExclusive(True)
         for k, l in specialist.AREAS:
-            b = QPushButton(l)
+            b = QPushButton(specialist.SHORT.get(k, l))
+            b.setToolTip(l)
             b.setCheckable(True)
             b.setProperty("chip", True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)

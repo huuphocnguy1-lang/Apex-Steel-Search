@@ -33,6 +33,13 @@ DEFAULTS = {
     "night_auto": False,
     "night_start": "22:00",
     "night_only_idle": True,
+    # Knowledge library (built-in expert notes + Learn from web) — indexed like a watched folder
+    "knowledge_enabled": True,
+    "kn_engine": "auto",            # auto = Bing → Bing China → DuckDuckGo
+    "kn_per_query": 2,              # pages kept per search query
+    "kn_wikipedia": True,
+    "kn_ai_notes": False,           # also ask the online AI model to write a note per topic
+    "kn_topics": ["ESP", "PS", "HYD-SERVO", "HYD-TROUBLE"],
     # Build smart index automatically after each scan (needs the AI engine running)
     "auto_smart": True,
     # OCR (text in photos and scanned PDFs)
@@ -87,4 +94,11 @@ class Config(dict):
         os.replace(tmp, self.path)
 
     def enabled_folders(self) -> list[str]:
-        return [f["path"] for f in self.get("folders", []) if f.get("enabled", True) and os.path.isdir(f["path"])]
+        out = [f["path"] for f in self.get("folders", []) if f.get("enabled", True) and os.path.isdir(f["path"])]
+        if self.get("knowledge_enabled", True):
+            try:
+                from .knowledge import root
+                out.append(root())
+            except Exception:
+                pass
+        return out

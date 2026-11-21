@@ -196,9 +196,16 @@ def smart_search(db, ai, q: str, filters: dict | None = None, limit: int = 100) 
 
 
 # ------------------------------------------------------------------ assistant
+SOURCE_RULES = (
+    "Sources are labelled: PLANT DOCUMENT (the user's own files — highest priority), PAST CASE (plant lessons "
+    "learned), BUILT-IN EXPERT NOTE (general expert knowledge), WEB SOURCE (internet, check), AI NOTE (unverified). "
+    "If sources disagree, follow the PLANT DOCUMENT and say that general sources differ. ")
 SYSTEM_PROMPT = (
-    "You are Apex AI, an assistant for steel-structure site installation and commissioning documents. "
-    "Answer ONLY from the numbered sources given. Cite sources like [1] or [2][3] after each fact. "
+    "You are Apex AI, an engineering assistant specialised in ESP endless strip production lines (thin slab caster, "
+    "high reduction mill, pendulum shear, induction heater, finishing mill, laminar cooling, high-speed shear, down "
+    "coilers), industrial hydraulics and the steel process, for installation, commissioning and maintenance engineers. "
+    + SOURCE_RULES +
+    "Answer from the numbered sources given. Cite sources like [1] or [2][3] after each fact. "
     "Give figures exactly (bolt grades, torques, tolerances, dimensions, dates). "
     "If the sources do not contain the answer, say so clearly. "
     "Answer in the same language as the question. Use short bullet points when useful."
@@ -217,7 +224,19 @@ def _gather_sources(db, ai, question: str, max_sources: int = 5, budget: int = 6
         qv = np.asarray(ai.embed([question])[0], dtype=np.float32)
         qv /= (np.linalg.norm(qv) or 1.0)
         sims = mat.astype(np.float32) @ qv
-        order = np.argsort(-sims)[:24]
+        order = list(np.argsort(-sims)[:48])
+        try:   # source priority: plant documents first, then built-in notes, web, AI notes
+            from .knowledge import ORIGIN_BONUS, origin
+            paths = {}
+            for i in order:
+                fid = file_ids[i]
+                if fid not in paths:
+                    r = db.get(fid)
+                    paths[fid] = r["path"] if r is not None else None
+            order.sort(key=lambda i: -(float(sims[i]) + ORIGIN_BONUS.get(origin(paths[file_ids[i]]), 0.0)))
+        except Exception:
+            pass
+        order = order[:24]
         texts = db.chunk_texts([chunk_ids[i] for i in order])
         for i in order:
             picks.append((file_ids[i], texts.get(chunk_ids[i], "")))
@@ -242,6 +261,24 @@ def _gather_sources(db, ai, question: str, max_sources: int = 5, budget: int = 6
         by_file.setdefault(fid, []).append(t)
         used += len(t)
     return by_file
+
+
+def source_origin(path):
+    try:
+        from .knowledge import origin
+        return origin(path)
+    except Exception:
+        return "plant"
+
+
+def source_label(org):
+    from .knowledge import ORIGIN_LABEL
+    return ORIGIN_LABEL.get(org, "DOCUMENT")
+
+
+def source_icon(org):
+    from .knowledge import ORIGIN_ICON
+    return ORIGIN_ICON.get(org, "")
 
 
 def cache_key(*parts) -> str:
@@ -309,8 +346,9 @@ def answer(db, ai, question: str, history: list[dict] | None = None, attachments
             continue
         n += 1
         info = ", ".join(x for x in (r["project"], r["dno"] and f"{r['dno']} Rev {r['rev']}", r["lang"]) if x)
-        blocks.append(f"[{n}] {r['name']} ({info})\n" + "\n…\n".join(texts))
-        sources.append((n, fid, r["name"], r["path"]))
+        org = source_origin(r["path"])
+        blocks.append(f"[{n}] {source_label(org)}: {r['name']} ({info})\n" + "\n…\n".join(texts))
+        sources.append((n, fid, source_icon(org) + r["name"], r["path"]))
     msgs = [{"role": "system", "content": SYSTEM_PROMPT + (
         " The user attached files marked ATTACHED BY USER: analyse them first, then relate them to the other sources."
         " For pictures, describe what you see (equipment, damage, text, alarms) before giving causes and checks."

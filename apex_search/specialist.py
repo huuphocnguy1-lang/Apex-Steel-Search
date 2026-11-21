@@ -1,8 +1,12 @@
 """Steel Specialist: troubleshooting for ESP, casting, hot strip mill, pay-off reel, laminar cooling, hydraulics."""
 from . import search
 
-AREAS = [("ESP", "ESP line"), ("Caster", "Casting"), ("HSM", "Hot strip mill"), ("POR", "Pay-off reel"),
-         ("LC", "Laminar cooling"), ("HYD", "Hydraulics")]
+AREAS = [("ESP", "ESP line"), ("Caster", "Casting"), ("RM", "HRM / roughing mill"), ("PS", "Pendulum shear & piler"),
+         ("IDH", "Induction heater & descaler"), ("HSM", "Finishing mill (FM)"), ("LC", "Laminar cooling"),
+         ("DC", "HSS & down coilers"), ("HYD", "Hydraulics"), ("POR", "Pay-off reel")]
+
+SHORT = {"ESP": "ESP", "Caster": "Caster", "RM": "HRM / RM", "PS": "Pendulum shear", "IDH": "IDH / descaler",
+         "HSM": "FM", "LC": "Cooling", "DC": "HSS & coilers", "HYD": "Hydraulics", "POR": "POR"}
 
 AREA_BRIEF = {
     "ESP": "Endless strip production (thin slab caster directly coupled to roughing mill, induction heater and finishing "
@@ -14,6 +18,20 @@ AREA_BRIEF = {
               "reduction, segment roll gap and bulging, straightening and the 700–900 °C ductility trough, "
               "liquidus/superheat, defects (longitudinal/transverse/corner cracks, centre segregation, inclusions, "
               "pinholes), SEN clogging.",
+    "RM": "High Reduction Mill / roughing stands R1–R4 directly after the caster: large reductions with the casting "
+          "heat, HGC and AGC (gaugemeter, mill modulus), tilt / wedge / camber, crown C25/C40, centre-line deviation, "
+          "interstand tension control by speed (no loopers), roll cooling, work-roll bending / shifting, main drives, "
+          "roll change and calibration (balancing, taration, contact, zeroing, modulus test).",
+    "PS": "Pendulum (pendular) shear SHP and pusher / piler: plate mode at casting start or when the FM is not ready, "
+          "batch cuts, emergency / tail-out cuts, coil-mode permissives, eccentric knife frame, encoders, knife "
+          "clearance and wear, overload (OVL), hydraulic balancing and swivelling, knife cooling, cut length from "
+          "bar speed and tracking, piler / pusher lift and travel, knife-change safety.",
+    "IDH": "Induction heater (inductors, medium-frequency converters, cooling water, entry / exit pyrometers, power "
+           "distribution), edge heater, rotary crop shear SHR, high-pressure descaler (pumps, accumulators, headers, "
+           "nozzles), scale defects.",
+    "DC": "High-speed flying shear (drum / cam, encoders, cut angle, fly-wheel, lubrication) and down coilers DC1–3 "
+          "(pinch rolls, side guides, mandrel expansion, wrapper rolls step control and calibration, coil change in "
+          "endless mode, telescoping, coil marks, LAS speed).",
     "HSM": "Hot strip mill / finishing mill: AGC and roll gap, interstand tension, looper control and oscillation, "
            "mass-flow mismatch, roll wear and thermal crown, flatness and profile, FDT, cobbles and strip breaks, side "
            "guides, edge defects, scale, downcoilers, set-up model adaptation.",
@@ -43,8 +61,10 @@ FORMAT = (
 
 
 def system_prompt(area: str) -> str:
-    return ("You are the Apex Steel Specialist, a senior steel-plant process, mechanical and automation engineer "
-            "with commissioning and troubleshooting experience. Area of this question: "
+    return ("You are the Apex Steel Specialist, a senior engineer specialised in ESP endless strip production lines "
+            "(Arvedi / Primetals), industrial hydraulics and the steel process, with commissioning and troubleshooting "
+            "experience on caster, HRM, pendulum shear, induction heater, finishing mill, cooling and coilers. "
+            + search.SOURCE_RULES + "Area of this question: "
             f"{dict(AREAS).get(area, area)}. Expertise: {AREA_BRIEF.get(area, '')}\n\n{FORMAT}\n"
             "You assist engineers: always remind to follow OEM procedures for safety-critical work.")
 
@@ -84,8 +104,9 @@ def specialist_answer(db, ai, area: str, question: str, history=None, attachment
         if r is None:
             continue
         n += 1
-        blocks.append(f"[{n}] {r['name']}\n" + "\n…\n".join(texts))
-        sources.append((n, fid, r["name"], r["path"]))
+        org = search.source_origin(r["path"])
+        blocks.append(f"[{n}] {search.source_label(org)}: {r['name']}\n" + "\n…\n".join(texts))
+        sources.append((n, fid, search.source_icon(org) + r["name"], r["path"]))
     msgs = [{"role": "system", "content": system_prompt(area)}]
     for h in (history or [])[-4:]:
         msgs.append({"role": h["role"], "content": h["content"][:1500]})

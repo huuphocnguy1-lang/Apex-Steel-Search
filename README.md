@@ -25,6 +25,19 @@
 | 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
 | 🔒 **Offline / ☁ Online** | Offline keeps all data on your laptop. Online lets the assistant use a cloud AI (Qwen, DeepSeek…). |
 
+## Specialist knowledge (v0.5)
+The AI is a specialist in **ESP lines, hydraulics and the steel process**.
+- **📘 Built-in expert notes** (installed automatically, work offline from day 1): ESP line overview, thin-slab caster,
+  HRM, pendulum shear (PS) & piler, induction heater & descaler, finishing mill, laminar cooling & coilers,
+  hydraulics fundamentals, HGC / looper / servo hydraulics, hydraulic troubleshooting, the ESP HMI screens guide and a
+  glossary.
+- **📚 Knowledge page → 🌐 Learn from web**: tick topic packs (ESP, Caster, HRM, PS, IDH, FM, cooling, coilers,
+  hydraulics…) or type your own topics / links. Pages and PDFs are saved with their source link in the knowledge
+  folder, then digested (smart index + summaries). Search engine Auto = Bing → Bing China → DuckDuckGo.
+- **Source priority in every answer**: 🏭 your plant documents → 📒 lessons learned → 📘 built-in notes → 🌐 web → 🤖 AI notes.
+- Put your own manuals in `knowledge\my_notes` (📁 Open folder) — they count as plant documents.
+- Steel Specialist areas: ESP, Caster, HRM/RM, Pendulum shear, IDH/descaler, FM, Cooling, HSS & coilers, Hydraulics, POR.
+
 ## Fast answers (v0.4)
 - **Thinking off** for Qwen3 (Settings → *Deep thinking* turns it back on for very hard problems).
 - The local model **stays loaded** 60 min and is **loaded at start-up**, so the first question doesn't wait.

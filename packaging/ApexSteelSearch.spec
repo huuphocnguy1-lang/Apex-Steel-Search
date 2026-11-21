@@ -6,8 +6,9 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 
 datas = [(os.path.join(ROOT, "assets"), "assets")]
+datas += [(os.path.join(ROOT, "apex_search", "kb"), os.path.join("apex_search", "kb"))]   # built-in expert notes
 binaries = []
-hiddenimports = ["apex_search.gui.main_window", "fitz", "pymupdf", "pillow_heif", "extract_msg", "iba_py",
+hiddenimports = ["apex_search.gui.main_window", "apex_search.gui.knowledge_page", "apex_search.knowledge", "fitz", "pymupdf", "pillow_heif", "extract_msg", "iba_py",
                  "watchdog.observers", "watchdog.observers.read_directory_changes",
                  "win32com", "win32com.client", "win32com.client.dynamic", "pythoncom", "pywintypes"]
 

@@ -272,3 +272,88 @@ def test_answer_cache_and_summaries(tmp_path):
     db.cache_clear()
     assert db.cache_get(k2, 7) is None
     assert db.count_to_summarise([]) == (0, 0)
+
+
+# ------------------------------------------------------------------ knowledge library (v0.5)
+def test_knowledge_builtin_origin_and_html(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_SEARCH_HOME", str(tmp_path))
+    from apex_search import knowledge
+    n = knowledge.install_builtin()
+    files = knowledge.builtin_files()
+    assert n >= 10 and len(files) >= 10
+    assert any("Pendulum" in f for f in files) and any("Hydraulic" in f for f in files)
+    assert knowledge.install_builtin() == 0          # unchanged → not copied again
+    assert knowledge.origin(files[0]) == "builtin"
+    assert knowledge.origin(os.path.join(knowledge.root(), "web", "ESP", "x.md")) == "web"
+    assert knowledge.origin(os.path.join(knowledge.root(), "my_notes", "x.md")) == "plant"
+    assert knowledge.origin(str(tmp_path / "elsewhere.pdf")) == "plant"
+    txt, title = knowledge.html_to_text("<html><title>HGC</title><nav>menu</nav><script>x()</script>"
+                                        "<h2>Servo valve null</h2><p>" + "The servo valve null shift makes the HGC cylinder drift. " * 5 + "</p></html>")
+    assert title == "HGC" and "## Servo valve null" in txt and "menu" not in txt and "x()" not in txt
+
+
+def test_knowledge_learn_with_fake_web(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_SEARCH_HOME", str(tmp_path))
+    from apex_search import knowledge
+    page = ("<html><title>Pendulum shear basics</title><body><p>" +
+            "The pendulum shear cuts the transfer bar; knife clearance and cut timing matter. " * 40 + "</p></body></html>")
+    offtopic = "<html><title>Shoes</title><body><p>" + "Buy cheap shoes today. " * 200 + "</p></body></html>"
+    bing = ('<li class="b_algo"><h2><a href="https://example.com/ps">x</a></h2></li>'
+            '<li class="b_algo"><h2><a href="https://shop.example/shoes">y</a></h2></li>'
+            '<li class="b_algo"><h2><a href="https://www.youtube.com/watch?v=1">z</a></h2></li>')
+
+    def fake_get(url, limit=15_000_000, timeout=20):
+        if "bing.com/search" in url:
+            return bing.encode(), "text/html"
+        if url.endswith("/ps"):
+            return page.encode(), "text/html; charset=utf-8"
+        if "shoes" in url:
+            return offtopic.encode(), "text/html"
+        raise OSError("blocked")
+    monkeypatch.setattr(knowledge, "_get", fake_get)
+    logs = []
+    n = knowledge.learn(["PS"], per_query=2, wikipedia=False, log=logs.append)
+    assert n == 1                                    # same page found by every query → saved once
+    m = knowledge.load_manifest()
+    e = list(m.values())[0]
+    assert e["topic"] == "PS" and os.path.exists(e["file"]) and "Source: https://example.com/ps" in open(e["file"], encoding="utf-8").read()
+    assert knowledge.counts_by_topic() == {"PS": 1}
+    assert any("off-topic" in l for l in logs)
+    knowledge.remove_source(list(m)[0])
+    assert knowledge.load_manifest() == {} and not os.path.exists(e["file"])
+
+
+def test_answer_labels_sources_by_origin(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_SEARCH_HOME", str(tmp_path / "home"))
+    from apex_search import knowledge
+    knowledge.install_builtin()
+    plant = tmp_path / "plant"
+    plant.mkdir()
+    (plant / "bolt_spec.txt").write_text("Anchor bolt torque 10.9 grade M24 tightening 600 Nm. " * 10, encoding="utf-8")
+    cfg = Config(str(tmp_path / "cfg.json"))
+    cfg["folders"] = [{"path": str(plant), "enabled": True}]
+    db = DB(str(tmp_path / "i.db"))
+
+    class KAI(FakeAI):
+        def embed(self, texts):
+            return [[1.0 if "anchor" in t.lower() else 0.0, 0.2] for t in texts]
+    ai = KAI()
+    ix = Indexer(db, cfg, ai)
+    ix.scan()
+    ix.embed_pending()
+    roots = cfg.enabled_folders()
+    assert knowledge.root() in roots                 # knowledge folder is indexed automatically
+    res = search.answer(db, ai, "anchor bolt torque")
+    names = [s[2] for s in res["sources"]]
+    assert names and names[0].startswith("🏭")      # plant document first, labelled
+    assert any(n.startswith("📘") for n in names)    # built-in expert notes also used
+
+
+def test_search_link_cleaning():
+    import base64, urllib.parse
+    from apex_search import knowledge
+    real = "https://www.example.org/hydraulics/servo-valve.pdf"
+    enc = "a1" + base64.urlsafe_b64encode(real.encode()).decode().rstrip("=")
+    assert knowledge._clean_link("https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=" + enc + "&amp;ntb=1") == real
+    assert knowledge._clean_link("//duckduckgo.com/l/?uddg=" + urllib.parse.quote(real)) == real
+    assert knowledge._clean_link("https://www.youtube.com/watch?v=1") is None

@@ -19,6 +19,7 @@ from ..db import DB
 from ..indexer import Indexer
 from .common import STYLE, PreviewDialog, Runner, resource_path
 from .analyse import CasesPage, HydraulicsPage, IbaPage, SpecialistPage
+from .knowledge_page import KnowledgePage
 from .pages import (AssistantPage, DuplicatesPage, FoldersPage, LibraryPage, PhotosPage, RevisionsPage,
                     SearchPage, SettingsPage)
 
@@ -89,6 +90,33 @@ class IndexWorker(QThread):
                     self.indexer.embed_pending()
                 elif job[0] == "classify":
                     self.indexer.classify_existing()
+                elif job[0] == "learn":
+                    from .. import knowledge
+                    opts = job[1]
+                    self.message.emit("📚 Learning from the web…")
+                    knowledge.learn(opts.get("topics", []), opts.get("custom"), opts.get("urls"),
+                                    per_query=opts.get("per_query", 2), engine=opts.get("engine", "auto"),
+                                    wikipedia=opts.get("wikipedia", True), ai=self.ai if opts.get("ai_notes") else None,
+                                    ai_notes=opts.get("ai_notes", False), log=self.message.emit,
+                                    progress=self.progress.emit, should_stop=lambda: self._stop or self._cancel)
+                    kdir = knowledge.root()
+                    self.indexer.scan([kdir])
+                    self.changed.emit()
+                    self.indexer.embed_pending(quiet=True)
+                    self.indexer.summarize_pending([kdir])
+                    self.indexer.embed_pending(quiet=True)
+                    self.message.emit("📚 Knowledge digested — the AI can now use it offline.")
+                    self.changed.emit()
+                elif job[0] == "digest":
+                    from .. import knowledge
+                    kdir = knowledge.root()
+                    self.indexer.scan([kdir])
+                    self.changed.emit()
+                    self.indexer.embed_pending(quiet=True)
+                    self.indexer.summarize_pending([kdir])
+                    self.indexer.embed_pending(quiet=True)
+                    self.message.emit("📚 Knowledge digested.")
+                    self.changed.emit()
                 elif job[0] == "night":
                     auto = len(job) > 1 and job[1]
                     self.night_idle = bool(auto and self.cfg.get("night_only_idle", True))
@@ -97,7 +125,11 @@ class IndexWorker(QThread):
                         self.indexer.scan()
                         self.changed.emit()
                         self.indexer.embed_pending(quiet=True)
-                        self.indexer.summarize_pending(self.cfg.get("night_folders", []))
+                        nf = list(self.cfg.get("night_folders", []))
+                        if self.cfg.get("knowledge_enabled", True):
+                            from .. import knowledge
+                            nf.append(knowledge.root())
+                        self.indexer.summarize_pending(nf)
                         self.indexer.embed_pending(quiet=True)
                         self.message.emit("🌙 Night analysis finished")
                     finally:
@@ -193,6 +225,11 @@ class MainWindow(QMainWindow):
     def __init__(self, cfg: Config, db: DB, selftest=False):
         super().__init__()
         self.cfg, self.db, self.selftest = cfg, db, selftest
+        try:   # expert notes shipped with the app → knowledge folder (indexed like any folder)
+            from .. import knowledge
+            knowledge.install_builtin()
+        except Exception:
+            pass
         self.ai = AIClient(cfg)
         self.runner = Runner()
         self.worker = IndexWorker(cfg, db, self.ai)
@@ -222,6 +259,7 @@ class MainWindow(QMainWindow):
             ("iba", "📈   iba Analyzer", IbaPage(self)),
             ("hydraulics", "🔧   Hydraulics", HydraulicsPage(self)),
             ("cases", "📒   Lessons learned", CasesPage(self)),
+            ("knowledge", "📚   Knowledge", KnowledgePage(self)),
             ("library", "🏷   Library & tags", LibraryPage(self)),
             ("revisions", "📐   Revisions", RevisionsPage(self)),
             ("photos", "🖼   Photos & OCR", PhotosPage(self)),
@@ -249,6 +287,8 @@ class MainWindow(QMainWindow):
 
         folders_page = self.pages["folders"]
         self.worker.message.connect(folders_page.append_log)
+        self.worker.message.connect(self.pages["knowledge"].append_log)
+        self.worker.progress.connect(self.pages["knowledge"].set_progress)
         self.worker.message.connect(self._on_message)
         self.worker.progress.connect(folders_page.set_progress)
         self.worker.progress.connect(self._on_progress)
