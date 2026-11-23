@@ -25,6 +25,11 @@
 | 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
 | 🔒 **Offline / ☁ Online** | Offline keeps all data on your laptop. Online lets the assistant use a cloud AI (Qwen, DeepSeek…). |
 
+## Smart night analysis (v0.5.3)
+Settings → Night analysis: skip drawing sheets · latest revision only + one copy of duplicates · short summaries ·
+fast summary model (qwen3:4b, ⬇ Install button) · Check GPU. Documents are summarised most-useful-first:
+knowledge library → manuals / procedures → specs / reports → ESP & hydraulics topics → newest.
+
 ## Specialist knowledge (v0.5)
 The AI is a specialist in **ESP lines, hydraulics and the steel process**.
 - **📘 Built-in expert notes** (installed automatically, work offline from day 1): ESP line overview, thin-slab caster,

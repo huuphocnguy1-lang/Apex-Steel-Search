@@ -174,7 +174,8 @@ class AIClient:
         m = (model or "").lower()
         return any(k in m for k in ("qwen3", "deepseek-r1", "qwq", "magistral", "gpt-oss"))
 
-    def chat(self, messages: list[dict], images: list[str] | None = None, on_token=None, deep: bool | None = None) -> str:
+    def chat(self, messages: list[dict], images: list[str] | None = None, on_token=None, deep: bool | None = None,
+             model: str | None = None, max_tokens: int | None = None, keep_alive: str | None = None) -> str:
         """Returns the full answer. on_token(text) is called with each new piece as it is written.
         images: base64 JPEG strings attached to the last user message (uses the vision model).
         deep: allow the model to 'think' first (slower). Default from Settings (off = fast)."""
@@ -182,11 +183,13 @@ class AIClient:
         msgs = [dict(m) for m in messages]
         flt = _ThinkFilter(on_token)
         if self.online:
-            model = self.cfg.get("cloud_vision_model") if images else self.cfg["cloud_chat_model"]
+            model = self.cfg.get("cloud_vision_model") if images else (model or self.cfg["cloud_chat_model"])
             if images:
                 msgs[-1]["content"] = [{"type": "text", "text": msgs[-1]["content"]}] + [
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images]
             payload = {"model": model, "messages": msgs, "temperature": 0.2, "stream": True}
+            if max_tokens:
+                payload["max_tokens"] = int(max_tokens)
             if not deep and "qwen3" in (model or "").lower():
                 payload["enable_thinking"] = False
             try:
@@ -208,15 +211,17 @@ class AIClient:
                 r = _post(self._cloud("/chat/completions"), payload, self._cloud_headers(), timeout=240)
                 flt.feed(r["choices"][0]["message"]["content"] or "")
             return flt.text()
-        model = self.cfg.get("local_vision_model") if images else self.cfg["local_chat_model"]
+        model = self.cfg.get("local_vision_model") if images else (model or self.cfg["local_chat_model"])
         if images:
             msgs[-1]["images"] = images
         thinking = self._is_thinking_model(model)
         if thinking and not deep and msgs and msgs[-1].get("role") == "user" and "qwen3" in model.lower():
             msgs[-1]["content"] = str(msgs[-1]["content"]) + "\n/no_think"
         payload = {"model": model, "messages": msgs, "stream": True,
-                   "keep_alive": self.cfg.get("keep_alive", "60m"),
+                   "keep_alive": keep_alive or self.cfg.get("keep_alive", "60m"),
                    "options": {"temperature": 0.2, "num_ctx": int(self.cfg.get("num_ctx", 6144))}}
+        if max_tokens:
+            payload["options"]["num_predict"] = int(max_tokens)
         if thinking:
             payload["think"] = bool(deep)
         try:
@@ -246,6 +251,54 @@ class AIClient:
         r = _post(self._ollama("/api/chat"), payload, timeout=900)
         flt.feed(r["message"]["content"] or "")
         return flt.text()
+
+    # ------------------------------------------------------------ local models: list, GPU use, install
+    def local_models(self) -> list[str]:
+        try:
+            return [m.get("name", "") for m in _get(self._ollama("/api/tags"), timeout=5).get("models", [])]
+        except Exception:
+            return []
+
+    def has_local_model(self, name: str) -> bool:
+        n = (name or "").strip().lower()
+        if not n:
+            return False
+        names = [m.lower() for m in self.local_models()]
+        return n in names or (":" not in n and f"{n}:latest" in names)
+
+    def gpu_status(self) -> str:
+        """Where the loaded models run: 'GPU 100 %', 'CPU only', … (from Ollama /api/ps)."""
+        try:
+            ms = _get(self._ollama("/api/ps"), timeout=5).get("models", [])
+        except Exception:
+            return "unknown (Ollama not reachable)"
+        if not ms:
+            return "no model loaded yet"
+        out = []
+        for m in ms:
+            size, vram = m.get("size") or 0, m.get("size_vram") or 0
+            pct = round(100 * vram / size) if size else 0
+            where = "CPU only" if pct == 0 else ("GPU 100 %" if pct >= 99 else f"GPU {pct} % / CPU {100 - pct} %")
+            out.append(f"{m.get('name')}: {where}")
+        return " · ".join(out)
+
+    def pull_model(self, name: str, on_progress=None) -> str:
+        """Downloads a model into Ollama (like 'ollama pull name'). on_progress(text) gets status lines."""
+        last = ""
+        for line in _stream(self._ollama("/api/pull"), {"name": name, "stream": True}, None, 3600):
+            try:
+                d = json.loads(line)
+            except ValueError:
+                continue
+            if d.get("error"):
+                raise AIError(str(d["error"]))
+            st = d.get("status", "")
+            if d.get("total"):
+                st += f" {100 * (d.get('completed') or 0) // d['total']} %"
+            if on_progress and st != last:
+                on_progress(st)
+            last = st
+        return f"✔ {name} installed"
 
     def warm_up(self):
         """Loads the local chat model in memory (so the first question is fast)."""

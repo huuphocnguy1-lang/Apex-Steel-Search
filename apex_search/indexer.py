@@ -165,36 +165,72 @@ class Indexer:
                       "document is and its main content. Then one line starting with 'Key facts:' listing equipment, "
                       "tags, values with units, problems and dates found in the text. Use only the given text.")
 
+    SUMMARY_SHORT = ("Summarise this steel-plant document for engineers in at most 60 words of English: what it is and "
+                     "its main content. Then one line 'Key facts:' with equipment, tags, values with units, problems, "
+                     "dates. Use only the given text.")
+
+    def _summary_model(self) -> str | None:
+        """Small fast model for summaries (Settings). Falls back to the chat model when not installed."""
+        if self.ai.online:
+            return (self.cfg.get("summary_model_cloud") or "").strip() or None
+        m = (self.cfg.get("summary_model_local") or "").strip()
+        if not m:
+            return None
+        if hasattr(self.ai, "has_local_model") and not self.ai.has_local_model(m):
+            self.log(f"Summary model '{m}' is not installed → using the chat model (slower). "
+                     f"Install it in Settings → Night analysis, or run:  ollama pull {m}")
+            return None
+        return m
+
     def summarize_pending(self, folders: list[str]) -> int:
         if self.ai is None or not folders:
             return 0
-        done0, total = self.db.count_to_summarise(folders)
-        if total <= done0:
-            self.log(f"Night analysis: all {total} documents of the selected folders are already summarised.")
+        skip_dr = bool(self.cfg.get("sum_skip_drawings", True))
+        latest = bool(self.cfg.get("sum_latest_rev_only", True))
+        short = bool(self.cfg.get("sum_short", True))
+        plan, done0, total = self.db.summary_plan(folders, skip_dr, latest)
+        if not plan:
+            self.log(f"Night analysis: all {total} selected documents are already summarised.")
             return 0
-        self.log(f"Night analysis: {total - done0} documents to read and summarise…")
-        done, t0 = 0, time.time()
-        while not self.should_stop():
-            rows = self.db.files_to_summarise(folders, 20)
-            if not rows:
+        model = self._summary_model()
+        label = model or self.ai.chat_model_label()
+        self.log(f"Night analysis: {len(plan)} documents to summarise"
+                 + (" (drawing sheets skipped" if skip_dr else " (drawings included")
+                 + (", older revisions & duplicates skipped)" if latest else ")")
+                 + f" · model {label} · {'short' if short else 'full'} summaries · most useful first.")
+        system = self.SUMMARY_SHORT if short else self.SUMMARY_SYSTEM
+        limit = 3000 if short else 6000
+        done, t0, gpu_logged = 0, time.time(), False
+        for fid in plan:
+            if self.should_stop():
                 break
-            for r in rows:
-                if self.should_stop():
-                    break
-                self._wait_if_paused()
-                body = (r["body"] or "")[:6000]
-                msgs = [{"role": "system", "content": self.SUMMARY_SYSTEM},
-                        {"role": "user", "content": f"Document: {r['name']}\n\n{body}"}]
+            self._wait_if_paused()
+            r = self.db.summary_source(fid)
+            if r is None or self.db.summary(fid):
+                continue
+            msgs = [{"role": "system", "content": system},
+                    {"role": "user", "content": f"Document: {r['name']}\n\n{(r['body'] or '')[:limit]}"}]
+            try:
+                kw = {"deep": False}
+                if model:
+                    kw["model"] = model
+                    kw["keep_alive"] = "15m"
+                kw["max_tokens"] = 180 if short else 400
                 try:
-                    s = self.ai.chat(msgs, deep=False)
-                except Exception as e:
-                    self.log(f"Night analysis paused: {e}")
-                    return done
-                self.db.save_summary(r["id"], (s or "").strip()[:1500], self.ai.chat_model_label())
-                done += 1
-                rate = (time.time() - t0) / done
-                left = total - done0 - done
-                self.progress(done0 + done, total, f"summarising · about {left * rate / 3600:.1f} h left")
+                    s_ = self.ai.chat(msgs, **kw)
+                except TypeError:      # older / fake AI without these options
+                    s_ = self.ai.chat(msgs, deep=False)
+            except Exception as e:
+                self.log(f"Night analysis paused: {e}")
+                return done
+            self.db.save_summary(fid, (s_ or "").strip()[:1500], model or self.ai.chat_model_label())
+            done += 1
+            if not gpu_logged and hasattr(self.ai, "gpu_status") and not self.ai.online:
+                self.log("Model runs on: " + self.ai.gpu_status())
+                gpu_logged = True
+            rate = (time.time() - t0) / done
+            left = len(plan) - done
+            self.progress(done0 + done, total, f"summarising · {rate:.0f} s/doc · about {left * rate / 3600:.1f} h left")
         self.log(f"Night analysis: {done} document(s) summarised.")
         return done
 

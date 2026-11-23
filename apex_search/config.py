@@ -33,6 +33,11 @@ DEFAULTS = {
     "night_auto": False,
     "night_start": "22:00",
     "night_only_idle": True,
+    "sum_skip_drawings": True,      # night analysis: skip drawing sheets (they stay searchable)
+    "sum_latest_rev_only": True,    # only the latest revision of a document number, one copy of duplicates
+    "sum_short": True,              # short summaries (3000 characters read, ~60 words written) = 2x faster
+    "summary_model_local": "qwen3:4b",   # small fast model for summaries ('' = use the chat model)
+    "summary_model_cloud": "",           # e.g. qwen-plus / qwen-turbo ('' = use the cloud chat model)
     # Knowledge library (built-in expert notes + Learn from web) — indexed like a watched folder
     "knowledge_enabled": True,
     "kn_engine": "auto",            # auto = Bing → Bing China → DuckDuckGo

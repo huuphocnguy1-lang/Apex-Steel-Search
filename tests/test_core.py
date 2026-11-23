@@ -371,3 +371,34 @@ def test_search_link_cleaning():
     assert knowledge._clean_link("https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=" + enc + "&amp;ntb=1") == real
     assert knowledge._clean_link("//duckduckgo.com/l/?uddg=" + urllib.parse.quote(real)) == real
     assert knowledge._clean_link("https://www.youtube.com/watch?v=1") is None
+
+
+def test_summary_plan_skips_drawings_old_revisions_duplicates(tmp_path, monkeypatch):
+    monkeypatch.setenv("APEX_SEARCH_HOME", str(tmp_path / "home"))
+    db = DB(str(tmp_path / "p.db"))
+    root = str(tmp_path / "proj")
+    text = "Hydraulic servo valve maintenance and commissioning text. " * 40   # > 300 chars
+    def add(name, body=text, **kw):
+        f = {"path": os.path.join(root, name), "name": name, "ext": name.rsplit(".", 1)[1], "kind": "doc",
+             "mtime": 1000.0, "pages": 10, "hash": name}
+        f.update(kw)
+        return db.upsert(f, body, [])
+    d1 = add("GA_drawing_sheet.pdf", kind="drawing", pages=1, dno="D-100", rev="A")
+    cad = add("frame.dwg", kind="drawing", pages=1)
+    old = add("Spec_P-200_revA.pdf", dno="P-200", rev="A")
+    new = add("Spec_P-200_revB.pdf", dno="P-200", rev="B")
+    dup1 = add("report_copy1.pdf", hash="same")
+    dup2 = add("report_copy2.pdf", hash="same")
+    man = add("Operating_Manual_HPU.pdf", mtime=500.0)
+    big = add("Long_document_with_number.pdf", body=text * 4, kind="drawing", pages=40, dno="D-300", rev="0")
+    todo, done, total = db.summary_plan([root])
+    assert d1 not in todo and cad not in todo                # drawing sheets skipped
+    assert old not in todo and new in todo                   # latest revision only
+    assert (dup1 in todo) != (dup2 in todo)                  # one copy of duplicates
+    assert big in todo                                       # multi-page text document kept even if tagged drawing
+    assert todo[0] == man                                    # manuals first (even if older)
+    assert done == 0 and total == len(todo)
+    todo_all, _, _ = db.summary_plan([root], skip_drawings=False, latest_only=False)
+    assert d1 in todo_all and old in todo_all and dup1 in todo_all and dup2 in todo_all
+    db.save_summary(man, "summary", "m")
+    assert db.count_to_summarise([root]) == (1, total)

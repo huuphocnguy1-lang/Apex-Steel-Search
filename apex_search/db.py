@@ -210,15 +210,86 @@ class DB:
                       f"AND f.kind NOT IN ('photo') AND length(t.body) > 300 ORDER BY f.mtime DESC LIMIT ?",
                       args + [limit])
 
-    def count_to_summarise(self, folders: list[str]) -> tuple[int, int]:
+    # ------------------------------------------------------------ smart summary plan (v0.5.3)
+    PRIO_DOC = ("manual", "procedure", "instruction", "operating", "operation", "maintenance", "o&m", "commissioning",
+                "troubleshoot", "guide", "handbook", "description", "functional", "说明书", "手册", "操作", "维护",
+                "调试", "规程", "指导书")
+    PRIO_SPEC = ("spec", "report", "minutes", "datasheet", "data sheet", "test", "inspection", "punch", "ncr",
+                 "method statement", "itp", "checklist", "报告", "规范", "记录")
+    PRIO_DOMAIN = ("hydraul", "servo", "hgc", "looper", "valve", "pump", "accumulator", "caster", "mould", "mold",
+                   "shear", "pendulum", "idh", "induction", "descal", "coiler", "esp", "roughing", "finishing",
+                   "cooling", "液压", "伺服", "阀", "泵", "连铸", "剪", "卷取")
+
+    def summary_plan(self, folders: list[str], skip_drawings: bool = True, latest_only: bool = True):
+        """Returns (ordered list of file ids to summarise, already done, total planned).
+        Skips photos, short texts, drawing sheets (optional), older revisions and duplicate copies (optional);
+        most useful documents first: knowledge library → manuals / procedures → specs / reports → ESP & hydraulics
+        topics → newest."""
         import os as _os
+        from . import meta as _meta
         if not folders:
-            return 0, 0
+            return [], 0, 0
         conds = " OR ".join("f.path LIKE ?" for _ in folders)
         args = [_os.path.normpath(x).rstrip("\\/") + "%" for x in folders]
-        total = self.one(f"SELECT COUNT(*) FROM files f JOIN texts t ON t.file_id=f.id WHERE ({conds}) "
-                         f"AND f.kind NOT IN ('photo') AND length(t.body) > 300", args)[0]
-        done = self.one(f"SELECT COUNT(*) FROM files f JOIN summaries s ON s.file_id=f.id WHERE ({conds})", args)[0]
+        rows = self.q(f"SELECT f.id, f.path, f.name, f.ext, f.kind, f.pages, f.dno, f.rev, f.hash, f.mtime, "
+                      f"length(t.body) AS blen, (s.file_id IS NOT NULL) AS done FROM files f "
+                      f"JOIN texts t ON t.file_id=f.id LEFT JOIN summaries s ON s.file_id=f.id "
+                      f"WHERE ({conds}) AND f.kind NOT IN ('photo') AND length(t.body) > 300", args)
+        newest = {}
+        if latest_only:
+            for r in self.q("SELECT dno, rev FROM files WHERE dno IS NOT NULL AND dno != ''"):
+                k = r["dno"].upper()
+                if k not in newest or _meta.rev_key(r["rev"]) > _meta.rev_key(newest[k]):
+                    newest[k] = r["rev"]
+        try:
+            from .knowledge import root as _kroot
+            kroot = _os.path.normcase(_kroot())
+        except Exception:
+            kroot = "\0"
+        done_hashes = {r["hash"] for r in rows if r["done"] and r["hash"]}
+        seen_hash, todo, done, eligible = set(), [], 0, 0
+        newest_mtime = max((r["mtime"] or 0 for r in rows), default=0) or 1
+        for r in rows:
+            in_kb = _os.path.normcase(r["path"]).startswith(kroot)
+            if skip_drawings and not in_kb and r["kind"] == "drawing":
+                # a real drawing sheet: CAD file, or few pages / little text (multi-page text documents are kept)
+                if r["ext"] in ("dwg", "dxf") or (r["pages"] or 1) <= 3 or (r["blen"] or 0) < 4000:
+                    continue
+            if latest_only and r["dno"] and newest.get(r["dno"].upper()) is not None \
+                    and _meta.rev_key(r["rev"]) < _meta.rev_key(newest[r["dno"].upper()]):
+                continue
+            if r["done"]:
+                done += 1
+                eligible += 1
+                continue
+            if latest_only and r["hash"]:
+                if r["hash"] in done_hashes or r["hash"] in seen_hash:
+                    continue
+                seen_hash.add(r["hash"])
+            eligible += 1
+            n = ((r["name"] or "") + " " + r["path"]).lower()
+            score = 0.0
+            if in_kb:
+                score += 100
+            if any(k in n for k in self.PRIO_DOC):
+                score += 50
+            if any(k in n for k in self.PRIO_SPEC):
+                score += 30
+            if any(k in n for k in self.PRIO_DOMAIN):
+                score += 20
+            if (r["pages"] or 0) >= 5:
+                score += 5
+            score += 20 * (r["mtime"] or 0) / newest_mtime     # newer files a little first
+            todo.append((score, r["id"]))
+        todo.sort(key=lambda x: -x[0])
+        return [i for _, i in todo], done, eligible
+
+    def summary_source(self, fid: int):
+        return self.one("SELECT f.id, f.name, f.title, f.kind, t.body FROM files f JOIN texts t ON t.file_id=f.id "
+                        "WHERE f.id=?", (fid,))
+
+    def count_to_summarise(self, folders: list[str], skip_drawings: bool = True, latest_only: bool = True) -> tuple[int, int]:
+        _todo, done, total = self.summary_plan(folders, skip_drawings, latest_only)
         return done, total
 
     def save_summary(self, fid: int, text: str, model: str):

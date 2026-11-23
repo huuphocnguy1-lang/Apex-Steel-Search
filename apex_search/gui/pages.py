@@ -1003,7 +1003,8 @@ class FoldersPage(Page):
             w.setChecked(bool(v))
             w.blockSignals(False)
         self.night_time.setText(str(c.get("night_start", "22:00")))
-        done, total = self.ctx.db.count_to_summarise(c.get("night_folders", []))
+        done, total = self.ctx.db.count_to_summarise(c.get("night_folders", []), c.get("sum_skip_drawings", True),
+                                                     c.get("sum_latest_rev_only", True))
         self.night_state.setText(f"{done} / {total} documents summarised" if total else "Tick the folders to analyse")
         s = self.ctx.db.stats()
         cell = lambda n, l: (f'<td style="padding:4px 18px 4px 0"><span style="font-size:17pt;font-weight:700;color:#1F4E79">{n}</span>'
@@ -1018,7 +1019,8 @@ class FoldersPage(Page):
                  if self.night.item(i).checkState() == Qt.CheckState.Checked]
         self.ctx.cfg["night_folders"] = paths
         self.ctx.cfg.save()
-        done, total = self.ctx.db.count_to_summarise(paths)
+        done, total = self.ctx.db.count_to_summarise(paths, self.ctx.cfg.get("sum_skip_drawings", True),
+                                                     self.ctx.cfg.get("sum_latest_rev_only", True))
         self.night_state.setText(f"{done} / {total} documents summarised" if total else "Tick the folders to analyse")
 
     def on_night_settings(self, *_):
@@ -1201,6 +1203,32 @@ class SettingsPage(Page):
         form.addRow("", cc)
         form.addRow("", sub("Fast mode: the model stays loaded for 60 min, answers appear word by word, and the "
                             "background indexing pauses while you ask. 🌙 Night analysis (Folders page) makes it faster still."))
+        section("Night analysis (summaries)")
+        c0 = self.ctx.cfg
+        self.sum_dr = QCheckBox("Skip drawing sheets (much faster — drawings stay searchable by number, title and text)")
+        self.sum_rev = QCheckBox("Only the latest revision of each document number, one copy of duplicates")
+        self.sum_short = QCheckBox("Short summaries (about 2× faster)")
+        for w, k in ((self.sum_dr, "sum_skip_drawings"), (self.sum_rev, "sum_latest_rev_only"), (self.sum_short, "sum_short")):
+            w.setChecked(bool(c0.get(k, True)))
+            form.addRow("", w)
+        mrow = QHBoxLayout()
+        self.sum_model = QLineEdit(c0.get("summary_model_local", "qwen3:4b"))
+        self.sum_model.setPlaceholderText("empty = use the chat model")
+        inst = button("⬇ Install", ghost=True, tip="Downloads this model into Ollama (about 2–3 GB for qwen3:4b)")
+        inst.clicked.connect(self.install_summary_model)
+        gpu = button("Check GPU", ghost=True, tip="Shows whether the AI runs on the graphics card or on the CPU")
+        gpu.clicked.connect(self.check_gpu)
+        mrow.addWidget(self.sum_model, 1)
+        mrow.addWidget(inst)
+        mrow.addWidget(gpu)
+        form.addRow("Fast summary model (offline)", mrow)
+        self.sum_cloud = QLineEdit(c0.get("summary_model_cloud", ""))
+        self.sum_cloud.setPlaceholderText("e.g. qwen-plus or qwen-turbo (cheap) — empty = cloud chat model")
+        form.addRow("Summary model (online)", self.sum_cloud)
+        self.sum_info = QLabel("Small models (qwen3:4b, qwen3:1.7b) write summaries 2–4× faster; your questions still "
+                               "use the chat model.")
+        self.sum_info.setWordWrap(True)
+        form.addRow("", self.sum_info)
         section("Smart index")
         form.addRow("Built with", self.eprov)
         form.addRow("", self.auto)
@@ -1239,6 +1267,28 @@ class SettingsPage(Page):
         self.ocr.setChecked(bool(c["ocr_enabled"]))
         self.deep.setChecked(bool(c.get("deep_thinking", False)))
 
+    def install_summary_model(self):
+        name = self.sum_model.text().strip()
+        if not name:
+            return
+        self.sum_info.setText(f"Downloading {name}… (a few minutes; you can keep working)")
+        self.ctx.runner.run(self.ctx.ai.pull_model, (name,), self.on_installed, self.on_installed)
+
+    def on_installed(self, msg):
+        self.sum_info.setText(str(msg).replace("AIError: ", "✘ ") + " — click Save settings.")
+
+    def check_gpu(self):
+        self.sum_info.setText("Checking… (loads the model if needed)")
+        def _chk(ai):
+            ai.warm_up()
+            st = ai.gpu_status()
+            return "AI runs on: " + st + ("   → no usable graphics card: use the small summary model or Online mode "
+                                          "for speed." if "CPU only" in st else "")
+        self.ctx.runner.run(_chk, (self.ctx.ai,), self.on_gpu, self.on_gpu)
+
+    def on_gpu(self, msg):
+        self.sum_info.setText(str(msg))
+
     def clear_cache(self):
         n = self.ctx.db.cache_clear()
         self.result.setText(f"✔ Answer memory cleared{f' ({n} answers)' if isinstance(n, int) else ''}.")
@@ -1263,7 +1313,10 @@ class SettingsPage(Page):
                  cloud_chat_model=self.cchat.text().strip(), cloud_embed_model=self.cemb.text().strip(),
                  local_vision_model=self.lvis.text().strip(), cloud_vision_model=self.cvis.text().strip(),
                  embed_provider=self.eprov.currentData(), auto_smart=self.auto.isChecked(),
-                 ocr_enabled=self.ocr.isChecked(), deep_thinking=self.deep.isChecked(), oda_path=self.oda.text().strip(),
+                 ocr_enabled=self.ocr.isChecked(), deep_thinking=self.deep.isChecked(),
+                 sum_skip_drawings=self.sum_dr.isChecked(), sum_latest_rev_only=self.sum_rev.isChecked(),
+                 sum_short=self.sum_short.isChecked(), summary_model_local=self.sum_model.text().strip(),
+                 summary_model_cloud=self.sum_cloud.text().strip(), oda_path=self.oda.text().strip(),
                  project_regex=self.preg.text().strip() or r"\bP-?\d{3,5}\b",
                  excluded_dirs=[x.strip() for x in self.excl.text().split(",") if x.strip()])
         c.save()
