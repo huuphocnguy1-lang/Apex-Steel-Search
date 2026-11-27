@@ -105,20 +105,50 @@ class PadDb(context: Context) : SQLiteOpenHelper(context, "pad.db", null, 2) {
         }
     }
 
-    /** Copies laptop information (title, text, summary, type) onto pad files with the same name (+ size). */
+    /** Copies laptop information (title, text, summary, type, number, revision) onto pad files with the same
+     *  file name (same size preferred), then removes those laptop rows. Done in Kotlin (no correlated
+     *  sub-queries: older Android SQLite versions refuse them). */
     fun mergeLaptopRows(db: SQLiteDatabase = writableDatabase) {
-        db.execSQL(
-            """UPDATE docs SET
-                 title = coalesce((SELECT l.title FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname ORDER BY (l.size=docs.size) DESC LIMIT 1), title),
-                 summary = coalesce((SELECT l.summary FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname ORDER BY (l.size=docs.size) DESC LIMIT 1), summary),
-                 body = coalesce((SELECT l.body FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname ORDER BY (l.size=docs.size) DESC LIMIT 1), body),
-                 dtype = coalesce((SELECT l.dtype FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname ORDER BY (l.size=docs.size) DESC LIMIT 1), dtype),
-                 dno = coalesce((SELECT l.dno FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname AND l.dno IS NOT NULL LIMIT 1), dno),
-                 rev = coalesce((SELECT l.rev FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname AND l.rev IS NOT NULL LIMIT 1), rev)
-               WHERE onpad=1 AND EXISTS (SELECT 1 FROM docs l WHERE l.onpad=0 AND l.lname=docs.lname)"""
+        data class L(val id: Long, val size: Long, val title: String?, val summary: String?, val body: String?,
+                     val dtype: String?, val dno: String?, val rev: String?)
+        val lap = HashMap<String, ArrayList<L>>()
+        db.rawQuery("SELECT id, lname, size, title, summary, body, dtype, dno, rev FROM docs WHERE onpad=0", null).use { c ->
+            while (c.moveToNext()) {
+                val k = c.getString(1) ?: continue
+                lap.getOrPut(k) { ArrayList() }.add(
+                    L(c.getLong(0), c.getLong(2), c.getString(3), c.getString(4), c.getString(5), c.getString(6),
+                        c.getString(7), c.getString(8))
+                )
+            }
+        }
+        if (lap.isEmpty()) return
+        val upd = db.compileStatement(
+            "UPDATE docs SET title=coalesce(?,title), summary=coalesce(?,summary), body=coalesce(?,body), " +
+                "dtype=coalesce(?,dtype), dno=coalesce(?,dno), rev=coalesce(?,rev) WHERE id=?"
         )
-        // laptop rows now represented by a pad file are not needed any more
-        db.execSQL("DELETE FROM docs WHERE onpad=0 AND lname IN (SELECT lname FROM docs WHERE onpad=1)")
+        val used = HashSet<String>()
+        db.rawQuery("SELECT id, lname, size FROM docs WHERE onpad=1", null).use { c ->
+            while (c.moveToNext()) {
+                val k = c.getString(1) ?: continue
+                val cands = lap[k] ?: continue
+                val size = c.getLong(2)
+                val l = cands.firstOrNull { it.size == size } ?: cands[0]
+                upd.clearBindings()
+                val vals = listOf(l.title, l.summary, l.body, l.dtype, l.dno, l.rev)
+                for ((i, v) in vals.withIndex()) {
+                    if (v != null) upd.bindString(i + 1, v) else upd.bindNull(i + 1)
+                }
+                upd.bindLong(7, c.getLong(0))
+                upd.executeUpdateDelete()
+                used.add(k)
+            }
+        }
+        val del = db.compileStatement("DELETE FROM docs WHERE onpad=0 AND lname=?")
+        for (k in used) {
+            del.clearBindings()
+            del.bindString(1, k)
+            del.executeUpdateDelete()
+        }
     }
 
     // ------------------------------------------------------------------ search

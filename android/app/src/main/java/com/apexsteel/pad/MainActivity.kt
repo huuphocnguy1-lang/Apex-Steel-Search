@@ -237,12 +237,28 @@ class MainActivity : AppCompatActivity() {
         io.execute {
             var total = 0
             val scanner = Scanner(contentResolver, db)
+            val problems = ArrayList<String>()
             for (u in uris) {
                 try {
-                    total += scanner.scanTree(u, { t -> if (!quiet) busy(t) }, { stop.get() })
+                    val r = scanner.scanTree(u, { t -> if (!quiet) busy(t) }, { stop.get() })
+                    total += r.files
+                    if (r.files == 0) {
+                        problems.add("• ${folderLabel(u.toString())}: ${r.dirs} folder(s) opened, 0 files" +
+                            (if (r.errors > 0) ", ${r.errors} not readable (${r.firstError})" else ""))
+                    }
                 } catch (e: Exception) {
-                    main.post { toast("Cannot read folder: ${e.message}") }
+                    problems.add("• ${folderLabel(u.toString())}: cannot be read (${e.javaClass.simpleName}: ${e.message})")
                 }
+            }
+            if (!quiet && problems.isNotEmpty()) main.post {
+                AlertDialog.Builder(this)
+                    .setTitle("No files found")
+                    .setMessage(problems.joinToString("\n") + "\n\nCheck with the Xiaomi File Manager that your drawings are " +
+                        "really in this folder. In the folder picker, choose the folder under 'Internal storage' (not Recent, " +
+                        "Gallery or cloud). Android does not allow the storage root, Download itself or Android/data: put the " +
+                        "drawings in e.g. Documents/your project and choose that folder.")
+                    .setPositiveButton("Choose another folder") { _, _ -> pickFolder.launch(null) }
+                    .setNegativeButton("OK", null).show()
             }
             if (!quiet) busy("Building search index…")
             try {
@@ -376,7 +392,7 @@ class MainActivity : AppCompatActivity() {
             pickFolder.launch(null)
             return
         }
-        val names = list.map { Uri.decode(it).substringAfterLast(':').ifBlank { it } }.toTypedArray()
+        val names = list.map { folderLabel(it) }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Folders on this pad (tap to remove)")
             .setItems(names) { _, which ->
@@ -418,6 +434,18 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("OK", null).show()
     }
 
+    /** "content://…/tree/primary%3ADocuments%2FESP" → "Internal storage/Documents/ESP" */
+    private fun folderLabel(tree: String): String {
+        val id = try {
+            android.provider.DocumentsContract.getTreeDocumentId(Uri.parse(tree))
+        } catch (e: Exception) {
+            Uri.decode(tree)
+        }
+        val vol = id.substringBefore(':', "")
+        val path = id.substringAfter(':', id)
+        return (if (vol == "primary") "Internal storage" else vol.ifBlank { "Storage" }) + "/" + path
+    }
+
     private fun copy(text: String) {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("Apex", text))
@@ -432,5 +460,5 @@ class MainActivity : AppCompatActivity() {
 }
 
 object BuildConfigVersion {
-    const val NAME = "0.2.0"
+    const val NAME = "0.2.1"
 }

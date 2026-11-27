@@ -8,6 +8,8 @@ import java.util.Locale
 /** Walks the folders chosen by the user (Storage Access Framework) and updates the local index. */
 class Scanner(private val resolver: ContentResolver, private val db: PadDb) {
 
+    data class Result(val files: Int, val dirs: Int, val errors: Int, val firstError: String?, val rootName: String)
+
     private data class Found(val uri: String, val relpath: String, val name: String, val size: Long, val mtime: Long)
 
     private val projection = arrayOf(
@@ -19,13 +21,15 @@ class Scanner(private val resolver: ContentResolver, private val db: PadDb) {
     )
 
     /** Returns the number of files found. progress(text) is called from the worker thread. */
-    fun scanTree(treeUri: Uri, progress: (String) -> Unit, stop: () -> Boolean): Int {
+    fun scanTree(treeUri: Uri, progress: (String) -> Unit, stop: () -> Boolean): Result {
         val found = ArrayList<Found>()
         val rootId = DocumentsContract.getTreeDocumentId(treeUri)
         val rootName = rootId.substringAfterLast(':').substringAfterLast('/').ifBlank { "Folder" }
         val stack = ArrayDeque<Pair<String, String>>()     // (documentId, relative path)
         stack.addLast(Pair(rootId, rootName))
         var dirs = 0
+        var errors = 0
+        var firstError: String? = null
         while (stack.isNotEmpty() && !stop()) {
             val (docId, rel) = stack.removeLast()
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, docId)
@@ -45,16 +49,17 @@ class Scanner(private val resolver: ContentResolver, private val db: PadDb) {
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // folder not readable → skip it
+            } catch (e: Exception) {      // folder not readable → skip it, but report it
+                errors++
+                if (firstError == null) firstError = "${e.javaClass.simpleName}: ${e.message}"
             }
             dirs++
             if (dirs % 20 == 0) progress("Scanning $rootName… ${found.size} files")
         }
-        if (stop()) return found.size
+        if (stop()) return Result(found.size, dirs, errors, firstError, rootName)
         progress("Updating index… ${found.size} files")
         save(treeUri.toString(), found)
-        return found.size
+        return Result(found.size, dirs, errors, firstError, rootName)
     }
 
     private fun save(tree: String, found: List<Found>) {

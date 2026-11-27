@@ -3,7 +3,7 @@
     <string name="app_name">Apex Steel Pad</string>
     <string name="search_hint">Drawing number, name or word (e.g. F0302, HPU, 液压)</string>
     <string name="latest_rev">Latest rev</string>
-    <string name="empty_text">No documents yet.\n\nTap ⋮ → ＋ Add folder and choose the folder with your drawings on this pad.\n\nOptional: import the laptop index (⋮ → Import laptop index) to search inside documents.</string>
+    <string name="empty_text">No documents yet.\n\nTap ＋ ADD FOLDER (top right) and choose the folder with your drawings on this pad (e.g. Internal storage › Documents › your project).\n\nOptional: import the laptop index (⋮ → Import laptop index) to search inside documents.</string>
     <string name="preview_hint">Tap a document to preview it here.\n\nTap it again or press OPEN to open it in your PDF / DWG viewer.</string>
     <string name="preview">Preview</string>
     <string name="open">Open</string>
