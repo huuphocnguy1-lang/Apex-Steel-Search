@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="steel">#1F4E79</color>
+    <color name="icon_bg">#E8A008</color>
+    <color name="amber">#F2A900</color>
+    <color name="amber_dark">#8A6100</color>
+    <color name="page">#F4F6F9</color>
+    <color name="line">#E1E6ED</color>
+    <color name="grey">#5F6D7E</color>
+    <color name="text">#2C3E50</color>
+</resources>

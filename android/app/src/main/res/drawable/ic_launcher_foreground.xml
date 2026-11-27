@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same logo as Apex Steel Analyser (Windows): truss "A" + magnifier with trend line.
+     Original drawn on 256x256, scaled into the 66dp safe zone of the 108dp adaptive icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.34"
+        android:scaleY="0.34"
+        android:translateX="8.5"
+        android:translateY="8.5">
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M112,62 L52,214 M112,62 L150,158 M80,150 L138,150"
+            android:strokeWidth="15"
+            android:strokeColor="#22405F"
+            android:strokeLineCap="round" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M112,50 m-16,0 a16,16 0 1,0 32,0 a16,16 0 1,0 -32,0"
+            android:strokeWidth="7"
+            android:strokeColor="#22405F" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M198,198 L224,224"
+            android:strokeWidth="20"
+            android:strokeColor="#22405F"
+            android:strokeLineCap="round" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M170,170 m-37,0 a37,37 0 1,0 74,0 a37,37 0 1,0 -74,0"
+            android:strokeWidth="13"
+            android:strokeColor="#22405F" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M146,180 L160,168 L172,176 L192,154"
+            android:strokeWidth="8"
+            android:strokeColor="#E8A008"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

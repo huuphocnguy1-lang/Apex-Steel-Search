@@ -402,3 +402,22 @@ def test_summary_plan_skips_drawings_old_revisions_duplicates(tmp_path, monkeypa
     assert d1 in todo_all and old in todo_all and dup1 in todo_all and dup2 in todo_all
     db.save_summary(man, "summary", "m")
     assert db.count_to_summarise([root]) == (1, total)
+
+
+def test_pad_export(tmp_path):
+    import sqlite3, zipfile
+    from apex_search import padexport
+    db = DB(str(tmp_path / "x.db"))
+    root = str(tmp_path / "C_PEYI Zhongshou ESP")
+    fid = db.upsert({"path": os.path.join(root, "DWG", "A_115-F0302_ZSZ001_R00.pdf"), "name": "A_115-F0302_ZSZ001_R00.pdf",
+                     "ext": "pdf", "kind": "drawing", "size": 1234, "mtime": 1.0, "dno": "115-F0302", "rev": "R00",
+                     "title": "HPU piping"}, "Hydraulic power unit piping " * 300, [])
+    db.save_summary(fid, "HPU piping drawing", "m")
+    out = str(tmp_path / "t.apexpad")
+    assert padexport.export(db, out, [root]) == 1
+    z = zipfile.ZipFile(out)
+    z.extract("pad_index.db", str(tmp_path))
+    c = sqlite3.connect(str(tmp_path / "pad_index.db"))
+    r = c.execute("SELECT name, relpath, dno, rev, title, summary, length(body) FROM docs").fetchone()
+    assert r[1] == "C_PEYI Zhongshou ESP/DWG/A_115-F0302_ZSZ001_R00.pdf" and r[2] == "115-F0302" and r[5] == "HPU piping drawing"
+    assert r[6] == 3000

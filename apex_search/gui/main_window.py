@@ -107,6 +107,10 @@ class IndexWorker(QThread):
                     self.indexer.embed_pending(quiet=True)
                     self.message.emit("📚 Knowledge digested — the AI can now use it offline.")
                     self.changed.emit()
+                elif job[0] == "padexport":
+                    from .. import padexport
+                    padexport.export(self.db, job[1], self.cfg.enabled_folders(), log=self.message.emit,
+                                     progress=self.progress.emit, should_stop=lambda: self._stop or self._cancel)
                 elif job[0] == "digest":
                     from .. import knowledge
                     kdir = knowledge.root()

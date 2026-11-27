@@ -953,7 +953,10 @@ class FoldersPage(Page):
         self.b_smart.clicked.connect(self.start_smart)
         self.b_stop = button("Stop", ghost=True)
         self.b_stop.clicked.connect(self.ctx.worker.cancel)
-        for b in (self.b_scan, self.b_smart, self.b_stop):
+        self.b_pad = button("📱 Export for pad", ghost=True,
+                            tip="Makes an .apexpad file for the Apex Steel Pad app (search inside documents on the tablet)")
+        self.b_pad.clicked.connect(self.export_pad)
+        for b in (self.b_scan, self.b_smart, self.b_pad, self.b_stop):
             br.addWidget(b)
         br.addStretch()
         rv.addLayout(br)
@@ -1041,6 +1044,16 @@ class FoldersPage(Page):
         self.append_log("🌙 Night analysis queued: scan → smart index → summaries of every document.")
         self.night_state.setText("Running… (you can keep working; it gives way when you ask a question)")
         self.ctx.worker.enqueue(("night", False))
+
+    def export_pad(self):
+        import time as _t
+        default = os.path.join(os.path.expanduser("~"), "Desktop", f"ApexPad_{_t.strftime('%Y%m%d')}.apexpad")
+        p, _ = QFileDialog.getSaveFileName(self, "Export for the pad", default, "Apex Pad index (*.apexpad)")
+        if p:
+            if not p.lower().endswith(".apexpad"):
+                p += ".apexpad"
+            self.append_log("📱 Pad export queued…")
+            self.ctx.worker.enqueue(("padexport", p))
 
     def start_smart(self):
         self.b_smart.setEnabled(False)

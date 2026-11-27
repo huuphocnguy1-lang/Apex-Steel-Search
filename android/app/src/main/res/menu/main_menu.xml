@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item android:id="@+id/action_add" android:title="＋ Add folder" app:showAsAction="always|withText" />
+    <item android:id="@+id/action_read" android:title="📖 Read" app:showAsAction="ifRoom|withText" />
+    <item android:id="@+id/action_rescan" android:title="Rescan" app:showAsAction="ifRoom|withText" />
+    <item android:id="@+id/action_import" android:title="Import laptop index" app:showAsAction="never" />
+    <item android:id="@+id/action_syn" android:title="ESP synonyms" app:showAsAction="never" />
+    <item android:id="@+id/action_folders" android:title="Folders" app:showAsAction="never" />
+    <item android:id="@+id/action_about" android:title="Help / about" app:showAsAction="never" />
+</menu>

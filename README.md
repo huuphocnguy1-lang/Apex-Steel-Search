@@ -25,6 +25,17 @@
 | 📑 **Drawing types** | Recognises mechanical drawings, hydraulic schematics, P&IDs and electrical schematics, with filters in Search and Library. |
 | 🔒 **Offline / ☁ Online** | Offline keeps all data on your laptop. Online lets the assistant use a cloud AI (Qwen, DeepSeek…). |
 
+## 📱 Apex Steel Pad — Android app for the tablet (v0.6.0)
+Folder `android/` · built by GitHub Actions (workflow "Build Android APK") → artifact **ApexSteelPad-apk**.
+- ＋ Add folder: choose the folders with your drawings on the pad → instant search by file name, drawing number,
+  revision (F0302, ZSZ001, R00…), filters Drawings / Hydraulic / PDF / Word / Excel / Photos, "Latest rev" switch.
+- Tap = **preview** (PDF pages drawn on the pad, ◀ ▶, zoom) · tap again / OPEN = full viewer · long-press = details.
+- **📖 Read**: the pad reads the text inside its PDF (text layer), Word and Excel files — automatic after each scan.
+- **ESP synonyms**: rotary shear = SHR = crop shear = 转鼓飞剪, pendulum shear = PS = SHP = 摆式剪, HGC = 液压压下… (any word order).
+- Optional: Windows app → Folders & index → **📱 Export for pad** → copy the `.apexpad` file to the pad →
+  ⋮ → Import laptop index: search inside documents, titles, summaries, drawing types; documents that are only on the
+  laptop are listed as "only on laptop".
+
 ## Smart night analysis (v0.5.3)
 Settings → Night analysis: skip drawing sheets · latest revision only + one copy of duplicates · short summaries ·
 fast summary model (qwen3:4b, ⬇ Install button) · Check GPU. Documents are summarised most-useful-first:
